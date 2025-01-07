@@ -17,7 +17,8 @@ class TrainData:
     labels_task2: list[str]
 
     def __init__(self, **fields):
-            self.__dict__.update(**fields)
+        self.__dict__.update(**fields)
+
 
 class TrainSet:
 
