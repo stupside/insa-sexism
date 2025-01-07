@@ -1,0 +1,7 @@
+bin/
+out/
+dist/
+
+.vscode/
+
+.DS_Store
