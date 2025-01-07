@@ -1,7 +1,6 @@
 import csv
 import typer
 
-
 from typing_extensions import Annotated
 
 app = typer.Typer(
@@ -20,7 +19,7 @@ def hello(name: str):
 
 
 @app.command()
-def train(file: Annotated[typer.FileText, "CSV file used for training"]):
+def train(file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")]):
     from .cmd.train import TrainSet, TrainData
 
     trainset = TrainSet()
