@@ -1,5 +1,5 @@
-run:
-	poetry run cli
+train:
+	cli train ../cli-data/train.csv
 
 install:
 	poetry install
