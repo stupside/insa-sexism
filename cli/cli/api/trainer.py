@@ -1,15 +1,13 @@
-from numpy import float64, float32, array, append, ndarray
+from numpy import float32, array, append, ndarray
 
-from sklearn.feature_selection import f_classif
-from sklearn.feature_selection import SelectKBest
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import KFold
+from tensorflow import data
 
 from keras._tf_keras.keras import models, Input
 from keras._tf_keras.keras.layers import Dense, Dropout, BatchNormalization
 from keras._tf_keras.keras.optimizers import Adam
 from keras._tf_keras.keras.callbacks import EarlyStopping
 from keras._tf_keras.keras.regularizers import l2
+from keras._tf_keras.keras.layers import TextVectorization
 
 import numpy as np
 
@@ -54,8 +52,6 @@ class Trainer:
         self,
         ngram_range: tuple[int, int],
         ngram_top_k: int,
-        ngram_min_df: int,
-        ngram_token_mode: str,
     ):
         # Validate input data
         if len(self.train_tweets) == 0:
@@ -65,30 +61,28 @@ class Trainer:
         if len(self.test_tweets) == 0:
             raise ValueError("Validation texts cannot be empty")
 
-        kwargs = {
-            "dtype": float64,
-            "min_df": ngram_min_df,
-            "analyzer": ngram_token_mode,
-            "ngram_range": ngram_range,
-            "decode_error": "replace",
-            "strip_accents": "unicode",
-        }
-
-        vectorizer = TfidfVectorizer(**kwargs)
-
-        # First fit and transform the training data
-        x_train = vectorizer.fit_transform(self.train_tweets)
-
-        # Then transform the validation texts using the fitted vectorizer
-        x_val = vectorizer.transform(self.test_tweets)
-
-        # Select top 'k' features
-        selector = SelectKBest(f_classif, k=min(ngram_top_k, x_train.shape[1])).fit(
-            x_train, self.train_labels
+        # Create and configure the TextVectorization layer
+        vectorizer = TextVectorization(
+            max_tokens=ngram_top_k,
+            split="whitespace",
+            output_mode="count",  # Changed from tf-idf to count
+            ngrams=ngram_range,
+            output_sequence_length=None,
+            standardize="lower_and_strip_punctuation",
         )
 
-        x_val = selector.transform(x_val).astype("float32")
-        x_train = selector.transform(x_train).astype(dtype=float32)
+        # Adapt the vectorizer to the training data
+        vectorizer.adapt(self.train_tweets)
+
+        print(vectorizer.get_vocabulary()[:100])
+
+        # Transform the texts to vectors
+        x_train = vectorizer(self.train_tweets)
+        x_val = vectorizer(self.test_tweets)
+
+        # Convert to numpy arrays directly
+        x_train = x_train.numpy().astype(float32)
+        x_val = x_val.numpy().astype(float32)
 
         return x_train, x_val
 
@@ -145,12 +139,10 @@ class Trainer:
         fit_epochs: int,
         ngram_range: tuple[int, int],
         ngram_top_k: int,
-        ngram_min_df: int,
         dropout_rate: float,
         fit_batch_size: int,
         mlp_dense_units: int,
         kfolds_n_splits: int,
-        ngram_token_mode: str,
         fit_log_verbosity: int,
         adam_learning_rate: float,
         early_stopping_patience: int,
@@ -172,8 +164,6 @@ class Trainer:
         x_train, x_val = self._ngram_vectorize(
             ngram_top_k=ngram_top_k,
             ngram_range=ngram_range,
-            ngram_min_df=ngram_min_df,
-            ngram_token_mode=ngram_token_mode,
         )
 
         # Create model instance.
@@ -200,29 +190,35 @@ class Trainer:
             monitor="loss", patience=early_stopping_patience, restore_best_weights=True
         )
 
-        # Implement k-fold cross-validation
+        # Implement k-fold cross-validation using TensorFlow
+        dataset = data.Dataset.from_tensor_slices((x_train, self.train_labels))
+        dataset = dataset.shuffle(buffer_size=len(x_train))
 
-        kf = KFold(n_splits=kfolds_n_splits, shuffle=True)
+        # Split into k folds
+        fold_size = len(x_train) // kfolds_n_splits
         fold_histories = []
 
-        for fold, (train_idx, val_idx) in enumerate(kf.split(x_train)):
+        for fold in range(kfolds_n_splits):
             if fit_log_verbosity > 0:
                 print(f"Fold {fold + 1}/{kfolds_n_splits}")
 
-            x_train_fold = x_train[train_idx]
-            y_train_fold = self.train_labels[train_idx]
+            # Get indices for train and validation
+            val_start = fold * fold_size
+            val_end = (fold + 1) * fold_size
 
-            x_val_fold = x_train[val_idx]
-            y_val_fold = self.train_labels[val_idx]
+            val_data = dataset.skip(val_start).take(fold_size)
+            train_data = dataset.take(val_start).concatenate(dataset.skip(val_end))
+
+            # Batch the datasets
+            train_data = train_data.batch(fit_batch_size)
+            val_data = val_data.batch(fit_batch_size)
 
             history = model.fit(
-                x_train_fold,
-                y_train_fold,
+                train_data,
                 epochs=fit_epochs,
                 verbose=fit_log_verbosity,
                 callbacks=[early_stopping],
-                batch_size=fit_batch_size,
-                validation_data=(x_val_fold, y_val_fold),
+                validation_data=val_data,
             )
 
             fold_histories.append(history.history)
