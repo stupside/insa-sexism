@@ -2,6 +2,10 @@ import csv
 import typer
 
 from typing_extensions import Annotated
+from ast import literal_eval
+from .cmd.train import TrainSet, TrainData, run
+
+from rich.progress import track
 
 app = typer.Typer(
     help="This is a CLI tool detect sexism in text.", no_args_is_help=True
@@ -25,16 +29,30 @@ def train(
     top_k: int = 20000,
     token_mode: str = "word",
     ngram_range: tuple[int, int] = (1, 2),
-    min_document_frequency: int = 2,
+    min_document_frequency: float = 0.01,
 ):
 
-    from ast import literal_eval
-    from .cmd.train import TrainSet, TrainData, run
-
+    # run data_analysis
     trainset = TrainSet()
-    reader = csv.DictReader(file)
+    run(
+        trainset,
+        seed,
+        top_k,
+        token_mode,
+        ngram_range,
+        min_document_frequency,
+    )
 
-    from rich.progress import track
+
+def read_csv_file(file: typer.FileText, moduleName: str, className: str):
+    # Import the module dynamically
+    module = __import__(moduleName)
+
+    # Fetch the class and instantiate it
+    ClassToInstantiate = getattr(module, className)
+
+    reader = csv.DictReader(file)
+    tmp_list = []
 
     for row in track(reader, description="Loading CSV file"):
         # Convert string representations of arrays to actual arrays
@@ -45,13 +63,6 @@ def train(
                 except (ValueError, SyntaxError):
                     pass  # Keep original string if parsing fails
 
-        trainset.add(TrainData(**row))
+        tmp_list.append(ClassToInstantiate(**row))
 
-    run(
-        trainset,
-        seed,
-        top_k,
-        token_mode,
-        ngram_range,
-        min_document_frequency,
-    )
+    return tmp_list
