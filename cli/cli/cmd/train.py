@@ -1,31 +1,20 @@
 import random
 
+from numpy import float32
 
-import nltk
-
-
-import sklearn
-
-
+from nltk import download
 from nltk.corpus import stopwords
-
-
 from nltk.tokenize import word_tokenize
 
-
-from sklearn.feature_extraction.text import TfidfVectorizer
-
-
-from sklearn.feature_selection import SelectKBest
-
-
 from sklearn.feature_selection import f_classif
+from sklearn.feature_selection import SelectKBest
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 class TrainingSet:
 
-    labels: list[str]
-    tweets: list[str]
+    labels: list[str] = []
+    tweets: list[str] = []
 
     def add(self, tweet: str, label: str):
         self.labels.append(label)
@@ -37,10 +26,41 @@ class TrainingSet:
         random.seed(seed)
         random.shuffle(self.tweets)
 
+    def vectorize(
+        self,
+        top_k: int = 20000,
+        token_mode: str = "word",
+        ngram_range: tuple[int, int] = (1, 2),
+        min_document_frequency: int = 2,
+    ):
+        # Create keyword arguments to pass to the 'tf-idf' vectorizer.
+        kwargs = {
+            "dtype": float32,
+            "min_df": min_document_frequency,
+            "analyzer": token_mode,
+            "ngram_range": ngram_range,
+            "decode_error": "replace",
+            "strip_accents": "unicode",
+        }
+
+        # Instantiate the vectorizer
+        vectorizer = TfidfVectorizer(**kwargs)
+
+        # Learn vocabulary from training texts and vectorize training texts.
+        x_train = vectorizer.fit_transform(self.tweets)
+
+        # Select top 'k' of the vectorized features.
+        selector = SelectKBest(f_classif, k=min(top_k, x_train.shape[1]))
+
+        selector.fit(x_train, self.labels)
+
+        x_train = selector.transform(x_train).astype("float32")
+
+        # return the vectorized training
+        return x_train
+
 
 # tweet,annotators,gender_annotators,age_annotators,ethnicities_annotators,study_levels_annotators,countries_annotators,labels_task1,labels_task2,ID
-
-
 class TrainData:
 
     ID: int
@@ -74,29 +94,11 @@ class TrainData:
 
 class TrainSet:
 
-    dataset: list[TrainData]
+    dataset: list[TrainData] = []
 
     NUMBER_OF_VOTES = 6
 
     # Vectorization parameters
-
-    # Range (inclusive) of n-gram sizes for tokenizing text.
-
-    NGRAM_RANGE = (1, 2)
-
-    # Limit on the number of features. We use the top 20K features.
-
-    TOP_K = 20000
-
-    # Whether text should be split into word or character n-grams.
-
-    # One of 'word', 'char'.
-
-    TOKEN_MODE = "word"
-
-    # Minimum document/corpus frequency below which a token will be discarded.
-
-    MIN_DOCUMENT_FREQUENCY = 2
 
     def add(self, data: TrainData):
 
@@ -104,9 +106,8 @@ class TrainSet:
 
     def clean(self):
 
-        nltk.download("punkt_tab")
-
-        nltk.download("stopwords")
+        download("punkt_tab")
+        download("stopwords")
 
         stop_words = set(stopwords.words("english"))
 
@@ -144,72 +145,19 @@ class TrainSet:
 
         return training_set
 
-    def ngram_vectorize(self, train_texts, train_labels):
-        """Vectorizes texts as n-gram vectors.
-
-        1 text = 1 tf-idf vector the length of vocabulary of unigrams + bigrams.
-
-        # Arguments
-
-            train_texts: list, training text strings.
-
-            train_labels: np.ndarray, training labels.
-
-        # Returns
-
-            x_train: vectorized training texts
-
-        """
-
-        # Create keyword arguments to pass to the 'tf-idf' vectorizer.
-        kwargs = {
-            "ngram_range": self.NGRAM_RANGE,  # Use 1-grams + 2-grams.
-            "dtype": "int32",
-            "strip_accents": "unicode",
-            "decode_error": "replace",
-            "analyzer": self.TOKEN_MODE,  # Split text into word tokens.
-            "min_df": self.MIN_DOCUMENT_FREQUENCY,
-        }
-
-        # Instantiate the vectorizer
-        vectorizer = TfidfVectorizer(**kwargs)
-
-        # Learn vocabulary from training texts and vectorize training texts.
-        x_train = vectorizer.fit_transform(train_texts)
-
-        # Select top 'k' of the vectorized features.
-        selector = SelectKBest(f_classif, k=min(self.TOP_K, x_train.shape[1]))
-
-        selector.fit(x_train, train_labels)
-
-        x_train = selector.transform(x_train).astype("float32")
-
-        # return the vectorized training and validation texts
-        return x_train
-
 
 def run(trainset: TrainSet):
 
     print(f"Loaded {len(trainset.dataset)} rows")
 
     # Cleaning the data : remove punctuation, stopwords, etc.
-
     trainset.clean()
 
     # Get both the training data and the labels associated with it
-
     training_set = trainset.get_training_set()
 
     training_set.shuffle(123)
 
-    x_train = trainset.ngram_vectorize(training_set.tweets, training_set.labels)
+    vector = training_set.vectorize()
 
-    print(x_train)
-
-    for data in trainset.dataset:
-
-        print(data.tweet)
-
-    for data in trainset.dataset:
-
-        print(data.labels_task1)
+    print(vector)
