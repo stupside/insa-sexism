@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-sex = "cli.main:app"
+sxm = "cli.main:app"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

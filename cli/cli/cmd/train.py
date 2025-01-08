@@ -29,3 +29,7 @@ class TrainSet:
 
     def add(self, data: TrainData):
         self.dataset.append(data)
+
+
+def run(trainset: TrainSet):
+    print(f"Loaded {len(trainset.dataset)} rows")

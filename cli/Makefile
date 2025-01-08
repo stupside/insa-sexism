@@ -1,5 +1,5 @@
 train:
-	cli train ../cli-data/train.csv
+	sxm train --file ../cli-data/train.csv
 
 install:
 	poetry install

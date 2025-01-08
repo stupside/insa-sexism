@@ -20,7 +20,7 @@ def hello(name: str):
 
 @app.command()
 def train(file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")]):
-    from .cmd.train import TrainSet, TrainData
+    from .cmd.train import TrainSet, TrainData, run
 
     trainset = TrainSet()
 
@@ -31,4 +31,4 @@ def train(file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")]):
     for row in track(reader, description="Loading CSV file"):
         trainset.add(TrainData(**row))
 
-    typer.echo(f"Loaded {len(trainset.dataset)} rows")
+    run(trainset)
