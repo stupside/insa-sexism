@@ -1,23 +1,27 @@
 import random
 
-from numpy import float32
 
 from nltk import download
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 
+from numpy import float32
+from numpy import array
+
+
 from sklearn.feature_selection import f_classif
 from sklearn.feature_selection import SelectKBest
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from tensorflow.python.keras import models
+
 from tensorflow.python.keras.layers import Dense
 from tensorflow.python.keras.layers import Dropout
+from tensorflow.python.keras import models
 
 
 class TrainingSet:
 
-    labels: list[str] = []
+    labels: list[int] = []
     tweets: list[str] = []
 
     def add(self, tweet: str, label: str):
@@ -56,7 +60,7 @@ class TrainingSet:
         # Select top 'k' of the vectorized features.
         selector = SelectKBest(f_classif, k=min(top_k, x_train.shape[1]))
 
-        selector.fit(x_train, self.labels)
+        selector.fit(x_train, array(self.labels))
 
         x_train = selector.transform(x_train).astype("float32")
 
