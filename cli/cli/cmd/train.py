@@ -28,10 +28,10 @@ class TrainingSet:
 
     def vectorize(
         self,
-        top_k: int = 20000,
-        token_mode: str = "word",
-        ngram_range: tuple[int, int] = (1, 2),
-        min_document_frequency: int = 2,
+        top_k: int,
+        token_mode: str,
+        ngram_range: tuple[int, int],
+        min_document_frequency: int,
     ):
         # Create keyword arguments to pass to the 'tf-idf' vectorizer.
         kwargs = {
@@ -146,9 +146,14 @@ class TrainSet:
         return training_set
 
 
-def run(trainset: TrainSet):
-
-    print(f"Loaded {len(trainset.dataset)} rows")
+def run(
+    trainset: TrainSet,
+    seed: int,
+    top_k: int,
+    token_mode: str,
+    ngram_range: tuple[int, int],
+    min_document_frequency: int,
+):
 
     # Cleaning the data : remove punctuation, stopwords, etc.
     trainset.clean()
@@ -156,8 +161,10 @@ def run(trainset: TrainSet):
     # Get both the training data and the labels associated with it
     training_set = trainset.get_training_set()
 
-    training_set.shuffle(123)
+    training_set.shuffle(seed)
 
-    vector = training_set.vectorize()
+    vector = training_set.vectorize(
+        top_k, token_mode, ngram_range, min_document_frequency
+    )
 
     print(vector)

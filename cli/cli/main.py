@@ -19,7 +19,14 @@ def hello(name: str):
 
 
 @app.command()
-def train(file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")]):
+def train(
+    file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
+    seed: int = 123,
+    top_k: int = 20000,
+    token_mode: str = "word",
+    ngram_range: tuple[int, int] = (1, 2),
+    min_document_frequency: int = 2,
+):
     from .cmd.train import TrainSet, TrainData, run
 
     trainset = TrainSet()
@@ -31,4 +38,13 @@ def train(file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")]):
     for row in track(reader, description="Loading CSV file"):
         trainset.add(TrainData(**row))
 
-    run(trainset)
+    run(
+        # Training parameters
+        trainset,
+        # Vectorization parameters
+        seed,
+        top_k,
+        token_mode,
+        ngram_range,
+        min_document_frequency,
+    )
