@@ -52,10 +52,10 @@ class Trainer:
 
     def _ngram_vectorize(
         self,
-        top_k: int,
-        token_mode: str,
         ngram_range: tuple[int, int],
-        min_document_frequency: int,
+        ngram_top_k: int,
+        ngram_min_df: int,
+        ngram_token_mode: str,
     ):
         # Validate input data
         if len(self.train_tweets) == 0:
@@ -67,8 +67,8 @@ class Trainer:
 
         kwargs = {
             "dtype": float64,
-            "min_df": min_document_frequency,
-            "analyzer": token_mode,
+            "min_df": ngram_min_df,
+            "analyzer": ngram_token_mode,
             "ngram_range": ngram_range,
             "decode_error": "replace",
             "strip_accents": "unicode",
@@ -83,7 +83,7 @@ class Trainer:
         x_val = vectorizer.transform(self.test_tweets)
 
         # Select top 'k' features
-        selector = SelectKBest(f_classif, k=min(top_k, x_train.shape[1])).fit(
+        selector = SelectKBest(f_classif, k=min(ngram_top_k, x_train.shape[1])).fit(
             x_train, self.train_labels
         )
 
@@ -104,7 +104,12 @@ class Trainer:
         return units, activation
 
     def _get_mlp_model(
-        self, units: int, input_shape, layers: int, dropout_rate: int, num_classes: int
+        self,
+        layers: int,
+        input_shape,
+        num_classes: int,
+        dropout_rate: int,
+        mlp_dense_units: int,
     ):
         op_units, op_activation = self._get_last_layer_units_and_activation(num_classes)
 
@@ -116,7 +121,7 @@ class Trainer:
 
         for i in range(layers):
             # Decrease units gradually in deeper layers
-            layer_units = units // (2**i)
+            layer_units = mlp_dense_units // (2**i)
             if layer_units < 32:  # Minimum number of units
                 layer_units = 32
 
@@ -136,19 +141,19 @@ class Trainer:
 
     def train_ngram_model(
         self,
-        verbosity: int,
-        top_k: int,
-        token_mode: str,
-        ngram_range: tuple[int, int],
-        min_document_frequency: int,
-        units: int,
         layers: int,
-        epochs: int,
-        batch_size: int,
+        fit_epochs: int,
+        ngram_range: tuple[int, int],
+        ngram_top_k: int,
+        ngram_min_df: int,
         dropout_rate: float,
-        learning_rate: float,
+        fit_batch_size: int,
+        mlp_dense_units: int,
+        kfolds_n_splits: int,
+        ngram_token_mode: str,
+        fit_log_verbosity: int,
+        adam_learning_rate: float,
         early_stopping_patience: int,
-        folds: int,
     ):
         # Validate data before training
         if len(self.train_tweets) == 0:
@@ -165,15 +170,15 @@ class Trainer:
 
         # Vectorize texts.
         x_train, x_val = self._ngram_vectorize(
-            top_k=top_k,
-            token_mode=token_mode,
+            ngram_top_k=ngram_top_k,
             ngram_range=ngram_range,
-            min_document_frequency=min_document_frequency,
+            ngram_min_df=ngram_min_df,
+            ngram_token_mode=ngram_token_mode,
         )
 
         # Create model instance.
         model = self._get_mlp_model(
-            units=units,
+            mlp_dense_units=mlp_dense_units,
             layers=layers,
             input_shape=x_train.shape[1:],
             num_classes=num_classes,
@@ -187,7 +192,7 @@ class Trainer:
             loss = "sparse_categorical_crossentropy"
 
         # Update Adam optimizer initialization
-        optimizer = Adam(learning_rate=learning_rate)
+        optimizer = Adam(learning_rate=adam_learning_rate)
         model.compile(optimizer=optimizer, loss=loss, metrics=["acc"])
 
         # Add early stopping
@@ -197,12 +202,12 @@ class Trainer:
 
         # Implement k-fold cross-validation
 
-        kf = KFold(n_splits=folds, shuffle=True)
+        kf = KFold(n_splits=kfolds_n_splits, shuffle=True)
         fold_histories = []
 
         for fold, (train_idx, val_idx) in enumerate(kf.split(x_train)):
-            if verbosity > 0:
-                print(f"Fold {fold + 1}/{folds}")
+            if fit_log_verbosity > 0:
+                print(f"Fold {fold + 1}/{kfolds_n_splits}")
 
             x_train_fold = x_train[train_idx]
             y_train_fold = self.train_labels[train_idx]
@@ -213,11 +218,11 @@ class Trainer:
             history = model.fit(
                 x_train_fold,
                 y_train_fold,
-                validation_data=(x_val_fold, y_val_fold),
-                epochs=epochs,
-                verbose=verbosity,
-                batch_size=batch_size,
+                epochs=fit_epochs,
+                verbose=fit_log_verbosity,
                 callbacks=[early_stopping],
+                batch_size=fit_batch_size,
+                validation_data=(x_val_fold, y_val_fold),
             )
 
             fold_histories.append(history.history)

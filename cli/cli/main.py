@@ -24,24 +24,22 @@ def train(
     test: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
     train: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
     # Debug
-    verbosity: int = 1,
-    # Output
+    fit_log_verbosity: int = 1,
+    # Model
     output: str = "./out/model.keras",
-    # Vectorization parameters
-    top_k: int = 10000,
-    token_mode: str = "word",
-    ngram_range: tuple[int, int] = (1, 2),
-    min_document_frequency: int = 3,
-    # Layer parameters
-    units: int = 64,
+    # Training
     layers: int = 2,
-    epochs: int = 100,
-    batch_size: int = 256,
+    fit_epochs: int = 100,
+    ngram_top_k: int = 10000,
+    ngram_range: tuple[int, int] = (1, 2),
+    ngram_min_df: int = 3,
     dropout_rate: float = 0.3,
-    learning_rate: float = 1e-4,
+    fit_batch_size: int = 256,
+    kfolds_n_splits: int = 10,
+    mlp_dense_units: int = 64,
+    ngram_token_mode: str = "word",
+    adam_learning_rate: float = 1e-4,
     early_stopping_patience: int = 10,
-    # Others
-    folds: int = 10,
 ):
 
     from ast import literal_eval
@@ -83,21 +81,18 @@ def train(
     training_set = trainset.get_training_set()
 
     model, _, accuracy = training_set.train_ngram_model(
-        # Debug
-        verbosity=verbosity,
-        # Vectorization parameters
-        top_k=top_k,
-        token_mode=token_mode,
-        ngram_range=ngram_range,
-        min_document_frequency=min_document_frequency,
-        # Layer parameters
-        units=units,
         layers=layers,
-        epochs=epochs,
-        batch_size=batch_size,
+        fit_epochs=fit_epochs,
+        ngram_top_k=ngram_top_k,
+        ngram_range=ngram_range,
+        ngram_min_df=ngram_min_df,
         dropout_rate=dropout_rate,
-        learning_rate=learning_rate,
-        folds=folds,
+        fit_batch_size=fit_batch_size,
+        kfolds_n_splits=kfolds_n_splits,
+        mlp_dense_units=mlp_dense_units,
+        ngram_token_mode=ngram_token_mode,
+        fit_log_verbosity=fit_log_verbosity,
+        adam_learning_rate=adam_learning_rate,
         early_stopping_patience=early_stopping_patience,
     )
 
