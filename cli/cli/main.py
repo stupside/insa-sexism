@@ -27,21 +27,28 @@ def train(
     ngram_range: tuple[int, int] = (1, 2),
     min_document_frequency: int = 2,
 ):
+
+    from ast import literal_eval
     from .cmd.train import TrainSet, TrainData, run
 
     trainset = TrainSet()
-
     reader = csv.DictReader(file)
 
     from rich.progress import track
 
     for row in track(reader, description="Loading CSV file"):
+        # Convert string representations of arrays to actual arrays
+        for key, value in row.items():
+            if value.startswith("[") and value.endswith("]"):
+                try:
+                    row[key] = literal_eval(value)
+                except (ValueError, SyntaxError):
+                    pass  # Keep original string if parsing fails
+
         trainset.add(TrainData(**row))
 
     run(
-        # Training parameters
         trainset,
-        # Vectorization parameters
         seed,
         top_k,
         token_mode,
