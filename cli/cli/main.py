@@ -27,20 +27,21 @@ def train(
     verbosity: int = 1,
     # Output
     output: str = "./out/model.keras",
-    # Shuffle
-    seed: int = 123,
     # Vectorization parameters
-    top_k: int = 20000,
+    top_k: int = 10000,
     token_mode: str = "word",
     ngram_range: tuple[int, int] = (1, 2),
-    min_document_frequency: int = 2,
+    min_document_frequency: int = 3,
     # Layer parameters
     units: int = 64,
     layers: int = 2,
-    epochs: int = 1000,
-    batch_size: int = 128,
-    dropout_rate: float = 0.2,
-    learning_rate: float = 1e-3,
+    epochs: int = 100,
+    batch_size: int = 256,
+    dropout_rate: float = 0.3,
+    learning_rate: float = 1e-4,
+    early_stopping_patience: int = 10,
+    # Others
+    folds: int = 10,
 ):
 
     from ast import literal_eval
@@ -81,9 +82,7 @@ def train(
     # Get both the training data and the labels associated with it
     training_set = trainset.get_training_set()
 
-    training_set.shuffle_train_data(seed)
-
-    model, predictions, accuracy = training_set.train_ngram_model(
+    model, _, accuracy = training_set.train_ngram_model(
         # Debug
         verbosity=verbosity,
         # Vectorization parameters
@@ -98,6 +97,8 @@ def train(
         batch_size=batch_size,
         dropout_rate=dropout_rate,
         learning_rate=learning_rate,
+        folds=folds,
+        early_stopping_patience=early_stopping_patience,
     )
 
     print(accuracy)

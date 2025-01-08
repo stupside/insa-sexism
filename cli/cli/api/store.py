@@ -1,6 +1,11 @@
 from nltk import download
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer, LancasterStemmer
+
+import re
+
+import emoji
 
 from .trainer import Trainer
 
@@ -59,17 +64,35 @@ class DataStore:
         self.test_set.append(data)
 
     def clean_train_data(self):
+        download("wordnet")
         download("punkt_tab")
         download("stopwords")
 
         stop_words = set(stopwords.words("english"))
 
+        stemmer = LancasterStemmer()
+        lemmatizer = WordNetLemmatizer()
+
         for data in self.train_set:
+            # Convert emojis to text
+            tweet = emoji.demojize(data.tweet)
 
-            sentence = word_tokenize(data.tweet.lower())
+            # Remove URLs
+            tweet = re.sub(r"http\S+|www\S+|https\S+", "", tweet, flags=re.MULTILINE)
 
-            filtered = [word for word in sentence if word.isalnum()]
+            # Remove mentions but keep the text
+            tweet = re.sub(r"@", "", tweet)
 
+            # Remove hashtags but keep the text
+            tweet = re.sub(r"#", "", tweet)
+
+            # Convert to lowercase and tokenize
+            tokens = word_tokenize(tweet.lower())
+
+            filtered = [stemmer.stem(word) for word in tokens if word.isalnum()]
+            filtered = [lemmatizer.lemmatize(word) for word in tokens if word.isalnum()]
+
+            # Remove stopwords
             filtered = [word for word in filtered if word not in stop_words]
 
             data.tweet = " ".join(filtered)

@@ -218,6 +218,21 @@ files = [
 ]
 
 [[package]]
+name = "emoji"
+version = "2.14.0"
+description = "Emoji for Python"
+optional = false
+python-versions = ">=3.7"
+groups = ["main"]
+files = [
+    {file = "emoji-2.14.0-py3-none-any.whl", hash = "sha256:fcc936bf374b1aec67dda5303ae99710ba88cc9cdce2d1a71c5f2204e6d78799"},
+    {file = "emoji-2.14.0.tar.gz", hash = "sha256:f68ac28915a2221667cddb3e6c589303c3c6954c6c5af6fefaec7f9bdf72fdca"},
+]
+
+[package.extras]
+dev = ["coverage", "pytest (>=7.4.4)"]
+
+[[package]]
 name = "flake8"
 version = "7.1.1"
 description = "the modular source code checker: pep8 pyflakes and co"
@@ -1665,4 +1680,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<3.13"
-content-hash = "d644288933e3a8626830207faa5da93c74f6ba695700469f0e2dfc8709ab90e8"
+content-hash = "6a2ed620598dc2af042e7c56185d16f7dfd863cc11dc69072d561a56ad0bbfea"

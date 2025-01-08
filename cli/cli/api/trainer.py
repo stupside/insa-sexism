@@ -1,18 +1,17 @@
-from numpy import float64, float32, array, append, random, ndarray
+from numpy import float64, float32, array, append, ndarray
 
 from sklearn.feature_selection import f_classif
 from sklearn.feature_selection import SelectKBest
 from sklearn.feature_extraction.text import TfidfVectorizer
-
-# from tensorflow.python.keras import models
-# from tensorflow.python.keras.layers import Dense
-# from tensorflow.python.keras.layers import Dropout
-# from tensorflow.python.keras.optimizer_v2.adam import Adam
+from sklearn.model_selection import KFold
 
 from keras._tf_keras.keras import models, Input
-from keras._tf_keras.keras.layers import Dense
-from keras._tf_keras.keras.layers import Dropout
+from keras._tf_keras.keras.layers import Dense, Dropout, BatchNormalization
 from keras._tf_keras.keras.optimizers import Adam
+from keras._tf_keras.keras.callbacks import EarlyStopping
+from keras._tf_keras.keras.regularizers import l2
+
+import numpy as np
 
 
 class Trainer:
@@ -28,12 +27,6 @@ class Trainer:
     def add_train_data(self, tweet: str, label: int):
         self.train_tweets = append(self.train_tweets, tweet)
         self.train_labels = append(self.train_labels, label)
-
-    def shuffle_train_data(self, seed: int):
-        random.seed(seed)
-        perm = random.permutation(len(self.train_labels))
-        self.train_labels = self.train_labels[perm]
-        self.train_tweets = self.train_tweets[perm]
 
     def _get_num_classes(self) -> int:
         num_classes = max(self.train_labels) + 1
@@ -113,18 +106,29 @@ class Trainer:
     def _get_mlp_model(
         self, units: int, input_shape, layers: int, dropout_rate: int, num_classes: int
     ):
-        op_units, op_activation = Trainer._get_last_layer_units_and_activation(
-            num_classes
-        )
+        op_units, op_activation = self._get_last_layer_units_and_activation(num_classes)
 
         inputs = Input(shape=input_shape)
-        dropout = Dropout(rate=dropout_rate)(inputs)
 
-        for _ in range(layers - 1):
-            dropout = Dense(units=units, activation="relu")(dropout)
-            dropout = Dropout(rate=dropout_rate)(dropout)
+        # Add BatchNormalization at the start
+        normalization = inputs
+        normalization = BatchNormalization()(normalization)
 
-        outputs = Dense(units=op_units, activation=op_activation)(dropout)
+        for i in range(layers):
+            # Decrease units gradually in deeper layers
+            layer_units = units // (2**i)
+            if layer_units < 32:  # Minimum number of units
+                layer_units = 32
+
+            normalization = Dense(
+                units=layer_units,
+                activation="relu",
+                kernel_regularizer=l2(0.01),  # L2 regularization
+            )(normalization)
+            normalization = BatchNormalization()(normalization)
+            normalization = Dropout(rate=dropout_rate)(normalization)
+
+        outputs = Dense(units=op_units, activation=op_activation)(normalization)
 
         model = models.Model(inputs=inputs, outputs=outputs)
 
@@ -132,20 +136,19 @@ class Trainer:
 
     def train_ngram_model(
         self,
-        # Debug
         verbosity: int,
-        # Vectorization parameters
         top_k: int,
         token_mode: str,
         ngram_range: tuple[int, int],
         min_document_frequency: int,
-        # Layer parameters
         units: int,
         layers: int,
         epochs: int,
         batch_size: int,
         dropout_rate: float,
         learning_rate: float,
+        early_stopping_patience: int,
+        folds: int,
     ):
         # Validate data before training
         if len(self.train_tweets) == 0:
@@ -187,24 +190,47 @@ class Trainer:
         optimizer = Adam(learning_rate=learning_rate)
         model.compile(optimizer=optimizer, loss=loss, metrics=["acc"])
 
-        # Train model without validation data
-        history = model.fit(
-            x_train,
-            self.train_labels,
-            # validation_data=(x_val, self.test_labels),
-            epochs=epochs,
-            verbose=verbosity,
-            batch_size=batch_size,
+        # Add early stopping
+        early_stopping = EarlyStopping(
+            monitor="loss", patience=early_stopping_patience, restore_best_weights=True
         )
+
+        # Implement k-fold cross-validation
+
+        kf = KFold(n_splits=folds, shuffle=True)
+        fold_histories = []
+
+        for fold, (train_idx, val_idx) in enumerate(kf.split(x_train)):
+            if verbosity > 0:
+                print(f"Fold {fold + 1}/{folds}")
+
+            x_train_fold = x_train[train_idx]
+            y_train_fold = self.train_labels[train_idx]
+
+            x_val_fold = x_train[val_idx]
+            y_val_fold = self.train_labels[val_idx]
+
+            history = model.fit(
+                x_train_fold,
+                y_train_fold,
+                validation_data=(x_val_fold, y_val_fold),
+                epochs=epochs,
+                verbose=verbosity,
+                batch_size=batch_size,
+                callbacks=[early_stopping],
+            )
+
+            fold_histories.append(history.history)
+
+        # Average the metrics across folds
+        avg_metrics = {
+            "training_loss": np.mean([h["loss"][-1] for h in fold_histories]),
+            "training_accuracy": np.mean([h["acc"][-1] for h in fold_histories]),
+            "validation_loss": np.mean([h["val_loss"][-1] for h in fold_histories]),
+            "validation_accuracy": np.mean([h["val_acc"][-1] for h in fold_histories]),
+        }
 
         # Get predictions for test data
         predictions = model.predict(x_val)
 
-        return (
-            model,
-            predictions,
-            {
-                "training_loss": history.history["loss"][-1],
-                "training_accuracy": history.history["acc"][-1],
-            },
-        )
+        return model, predictions, avg_metrics
