@@ -1,3 +1,8 @@
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+
+
 # tweet,annotators,gender_annotators,age_annotators,ethnicities_annotators,study_levels_annotators,countries_annotators,labels_task1,labels_task2,ID
 class TrainData:
 
@@ -30,6 +35,25 @@ class TrainSet:
     def add(self, data: TrainData):
         self.dataset.append(data)
 
+    def clean(self):
+        nltk.download("punkt_tab")
+        nltk.download("stopwords")
+
+        stop_words = set(stopwords.words("english"))
+
+        for data in self.dataset:
+            sentence = word_tokenize(data.tweet.lower())
+
+            filtered = [word for word in sentence if word.isalnum()]
+            filtered = [word for word in filtered if word not in stop_words]
+
+            data.tweet = " ".join(filtered)
+
 
 def run(trainset: TrainSet):
     print(f"Loaded {len(trainset.dataset)} rows")
+
+    trainset.clean()
+
+    for data in trainset.dataset:
+        print(data.tweet)
