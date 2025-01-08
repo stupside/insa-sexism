@@ -154,7 +154,7 @@ class Trainer:
         fit_log_verbosity: int,
         adam_learning_rate: float,
         early_stopping_patience: int,
-    ):
+    ) -> tuple[models.Sequential, ndarray, dict[str, float]]:
         # Validate data before training
         if len(self.train_tweets) == 0:
             raise ValueError("No training data available")

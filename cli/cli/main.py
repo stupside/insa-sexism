@@ -80,7 +80,7 @@ def train(
     # Get both the training data and the labels associated with it
     training_set = trainset.get_training_set()
 
-    model, _, accuracy = training_set.train_ngram_model(
+    model, predictions, accuracy = training_set.train_ngram_model(
         layers=layers,
         fit_epochs=fit_epochs,
         ngram_top_k=ngram_top_k,
@@ -100,3 +100,16 @@ def train(
     model.summary()
 
     model.save(output)
+
+    with open(output + ".predictions", "w") as f:
+        writer = csv.writer(f)
+
+        writer.writerow(["tweet", "prediction"])
+
+        for idx, prediction in enumerate(predictions):
+            writer.writerow(
+                [
+                    trainset.test_set[idx].tweet,
+                    prediction,
+                ]
+            )
