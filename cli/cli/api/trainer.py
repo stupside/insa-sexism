@@ -77,12 +77,12 @@ class Trainer:
         print(vectorizer.get_vocabulary()[:100])
 
         # Transform the texts to vectors
-        x_train = vectorizer(self.train_tweets)
         x_val = vectorizer(self.test_tweets)
+        x_train = vectorizer(self.train_tweets)
 
         # Convert to numpy arrays directly
-        x_train = x_train.numpy().astype(float32)
         x_val = x_val.numpy().astype(float32)
+        x_train = x_train.numpy().astype(float32)
 
         return x_train, x_val
 
@@ -183,7 +183,7 @@ class Trainer:
 
         # Update Adam optimizer initialization
         optimizer = Adam(learning_rate=adam_learning_rate)
-        model.compile(optimizer=optimizer, loss=loss, metrics=["acc"])
+        model.compile(optimizer=optimizer, loss=loss, metrics=["acc", "accuracy"])
 
         # Add early stopping
         early_stopping = EarlyStopping(
@@ -210,8 +210,8 @@ class Trainer:
             train_data = dataset.take(val_start).concatenate(dataset.skip(val_end))
 
             # Batch the datasets
-            train_data = train_data.batch(fit_batch_size)
             val_data = val_data.batch(fit_batch_size)
+            train_data = train_data.batch(fit_batch_size)
 
             history = model.fit(
                 train_data,
