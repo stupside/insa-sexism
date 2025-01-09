@@ -1,13 +1,12 @@
 import random
+from numpy import float32
 
-
+# nltk imports
 from nltk import download
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 
-from numpy import float32
-
-
+# sklearn imports
 from sklearn.feature_selection import f_classif
 from sklearn.feature_selection import SelectKBest
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -15,7 +14,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 # Custom imports
 from cli.cmd.utils.training_data_format import TrainingDataFormat
 from cli.cmd.utils.validation_data_format import ValidationDataFormat
-from cmd.MLP_V1.mlp_tweets_labels_wrapper import MLP_TWEETS_LABELS_WRAPPER
+from cli.cmd.MLP_V1.mlp_tweets_labels_wrapper import MLP_TWEETS_LABELS_WRAPPER
 
 
 class MLP_PREPOCESS_DATA:
@@ -35,66 +34,35 @@ class MLP_PREPOCESS_DATA:
 
     NUMBER_OF_VOTES = 6
 
-    # Vectorization parameters
+    def __init__(self, brute_training_data, brute_validation_data):
+        self.brute_training_data = brute_training_data
+        self.brute_validation_data = brute_validation_data
 
-    def add(self, data: TrainingDataFormat):
+    def __step_1_format_and_clean_training_data(self, seed=123):
+        # Initialize the data
+        train_data = []
+        validation_data = []
 
-        self.training_dataset.append(data)
+        # Extract the tweets and the labels from the training data
+        for trainingDataObject in self.brute_training_data:
+            train_data.append(trainingDataObject.tweet)
+            validation_data.labels.append(
+                self.__is_sexist(trainingDataObject.labels_task1)
+            )
 
-    def clean(self):
+        # Extract the tweets from the validation data
+        for validationDataObject in self.brute_validation_data:
+            validation_data.append(validationDataObject.tweet)
 
-        download("punkt_tab")
-        download("stopwords")
+        # Clean the data
+        self.formatted_training_data.tweets = self.__clean(train_data)
+        self.formatted_validation_tweets = self.__clean(validation_data)
 
-        stop_words = set(stopwords.words("english"))
-
-        for data in self.training_dataset:
-
-            sentence = word_tokenize(data.tweet.lower())
-
-            filtered = [word for word in sentence if word.isalnum()]
-
-            filtered = [word for word in filtered if word not in stop_words]
-
-            data.tweet = " ".join(filtered)
-
-    def is_sexist(self, data: TrainingDataFormat):
-
-        yes = 0
-
-        for label in data.labels_task1:
-            if label == "YES":
-                yes += 1
-
-        if yes >= (self.NUMBER_OF_VOTES / 2):
-
-            return 1
-
-        return 0
-
-    def get_training_set(self) -> TrainingSet:
-
-        training_set = TrainingSet()
-
-        for data in self.training_dataset:
-            is_sexist = self.is_sexist(data)
-            training_set.add(data.tweet, is_sexist)
-
-        return training_set
-
-    def add(self, tweet: str, label: str):
-        self.trainning_labels.append(label)
-        self.training_tweets.append(tweet)
-
-    def shuffle(self, seed=123):
+        # Shuffle the training data and labels.
         random.seed(seed)
-        random.shuffle(self.trainning_labels)
+        random.shuffle(self.formatted_training_data.tweets)
         random.seed(seed)
-        random.shuffle(self.training_tweets)
-
-    def __step_1_format_and_clean_training_data(self):
-        tweets_lis
-        return "hello"
+        random.shuffle(self.formatted_training_data.labels)
 
     def __step_2_vectorize(
         self,
@@ -128,3 +96,42 @@ class MLP_PREPOCESS_DATA:
         x_train = selector.transform(x_train).astype("float32")
         x_val = selector.transform(x_val).astype("float32")
         return x_train, x_val
+
+    def __clean(self, tweets: list[str]) -> list[str]:
+
+        download("punkt_tab")
+        download("stopwords")
+
+        stop_words = set(stopwords.words("english"))
+
+        for data in self.training_dataset:
+
+            sentence = word_tokenize(data.tweet.lower())
+
+            filtered = [word for word in sentence if word.isalnum()]
+
+            filtered = [word for word in filtered if word not in stop_words]
+
+            data.tweet = " ".join(filtered)
+
+    def __is_sexist(self, data: TrainingDataFormat):
+
+        yes = 0
+
+        for label in data.labels_task1:
+            if label == "YES":
+                yes += 1
+
+        if yes >= (self.NUMBER_OF_VOTES / 2):
+
+            return 1
+
+        return 0
+
+    def run(self):
+        self.__step_1_format_and_clean_training_data()
+        self.__step_2_vectorize()
+
+
+if __name__ == "__main__":
+    print("hello")
