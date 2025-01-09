@@ -113,8 +113,8 @@ class Trainer:
 
         # Add BatchNormalization at the start
         # This normalizes the input to the next layer
-        normalization = inputs
-        normalization = BatchNormalization()(normalization)
+        chain = inputs
+        chain = BatchNormalization()(chain)
 
         # Add hidden layers
         for i in range(layers):
@@ -125,21 +125,21 @@ class Trainer:
 
             # Add Dense layer with L2 regularization
             # This helps prevent overfitting and improves generalization of the model
-            normalization = Dense(
+            chain = Dense(
                 units=layer_units,
                 activation="relu",
                 kernel_regularizer=l2(0.01),  # L2 regularization
-            )(normalization)
+            )(chain)
             # Add BatchNormalization
             # This normalizes the input to the next layer
-            normalization = BatchNormalization()(normalization)
+            chain = BatchNormalization()(chain)
             # Add Dropout
             # This helps prevent overfitting by randomly setting a fraction of input units to 0
-            normalization = Dropout(rate=dropout_rate)(normalization)
+            chain = Dropout(rate=dropout_rate)(chain)
 
         # Add the last layer
         # This is the output layer, which is used to make predictions
-        outputs = Dense(units=op_units, activation=op_activation)(normalization)
+        outputs = Dense(units=op_units, activation=op_activation)(chain)
 
         # Create the model
         # This is the final model that will be trained
