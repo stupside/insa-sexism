@@ -1,6 +1,6 @@
-from numpy import float32, array, append, ndarray
+from tensorflow import cast, float32
 
-from tensorflow import data
+from numpy import array, append, ndarray
 
 from keras._tf_keras.keras import models, Input
 from keras._tf_keras.keras.layers import Dense, Dropout, BatchNormalization
@@ -65,8 +65,7 @@ class Trainer:
         # This is used to standardize, tokenize, and vectorize our text data
         vectorizer = TextVectorization(
             max_tokens=ngram_top_k,
-            split="whitespace",
-            output_mode="count",  # Changed from tf-idf to count
+            output_mode="count",
             ngrams=ngram_range,
             output_sequence_length=None,
             standardize="lower_and_strip_punctuation",
@@ -75,14 +74,13 @@ class Trainer:
         # Adapt the vectorizer to the training data
         vectorizer.adapt(self.train_tweets)
 
-        # Transform the texts to vectors
+        # Transform the texts to vectors using eager execution
         x_val = vectorizer(self.test_tweets)
         x_train = vectorizer(self.train_tweets)
 
-        # Convert to numpy arrays directly
-        # This is necessary for the model to work with the data
-        x_val = x_val.numpy().astype(float32)
-        x_train = x_train.numpy().astype(float32)
+        # Convert to numpy arrays using tf.cast first
+        x_val: ndarray = cast(x_val, float32)._numpy()
+        x_train: ndarray = cast(x_train, float32)._numpy()
 
         return x_train, x_val
 
@@ -130,9 +128,11 @@ class Trainer:
                 activation="relu",
                 kernel_regularizer=l2(0.01),  # L2 regularization
             )(chain)
+
             # Add BatchNormalization
             # This normalizes the input to the next layer
             chain = BatchNormalization()(chain)
+
             # Add Dropout
             # This helps prevent overfitting by randomly setting a fraction of input units to 0
             chain = Dropout(rate=dropout_rate)(chain)
@@ -198,72 +198,46 @@ class Trainer:
         else:
             loss = "sparse_categorical_crossentropy"
 
-        # Set the optimizer for the model using the Adam optimizer
-        # This optimizer is used to update the weights of the model to minimize the loss
-        optimizer = Adam(learning_rate=adam_learning_rate)
-        # Compile the model, specifying the optimizer, loss function, and metrics to track
-        # This prepares the model for training and evaluation on the data provided to it later
-        model.compile(optimizer=optimizer, loss=loss, metrics=["acc", "accuracy"])
-
-        # Add early stopping, which stops training when the loss stops decreasing significantly
-        early_stopping = EarlyStopping(
-            monitor="loss", patience=early_stopping_patience, restore_best_weights=True
+        model = self._get_mlp_model(
+            mlp_dense_units=mlp_dense_units,
+            layers=layers,
+            input_shape=x_train.shape[1:],
+            num_classes=num_classes,
+            dropout_rate=dropout_rate,
         )
 
-        # Implement k-fold cross-validation using TensorFlow
-        # This helps to evaluate the model's performance on different subsets of the data
-        # This is useful when the train and validation data are limited in size or quality
-        dataset = data.Dataset.from_tensor_slices((x_train, self.train_labels))
-        dataset = dataset.shuffle(buffer_size=len(x_train))
+        fold_optimizer = Adam(learning_rate=adam_learning_rate)
 
-        # Split into k folds and train to later train the model on each fold
-        fold_size = len(x_train) // kfolds_n_splits
-        fold_histories = []
+        model.compile(optimizer=fold_optimizer, loss=loss, metrics=["accuracy"])
 
-        # Train the model on each fold and get the average metrics
-        for fold in range(kfolds_n_splits):
-            if fit_log_verbosity > 0:
-                print(f"Fold {fold + 1}/{kfolds_n_splits}")
+        # Initialize stratified k-fold and callbacks
+        early_stopping = EarlyStopping(
+            monitor="val_loss",
+            patience=early_stopping_patience,
+            restore_best_weights=True,
+        )
 
-            # Get indices for train and validation data
-            # This is used to split the data into training and validation sets
-            val_start = fold * fold_size
-            val_end = (fold + 1) * fold_size
+        history = model.fit(
+            x_train,
+            self.train_labels,
+            validation_data=(x_train, self.train_labels),
+            epochs=fit_epochs,
+            batch_size=fit_batch_size,
+            callbacks=[early_stopping],
+            verbose=fit_log_verbosity,
+        )
 
-            # Get the validation and training data for the fold using the indices
-            # This is used to train the model on the data for this fold and evaluate it
-            val_data = dataset.skip(val_start).take(fold_size)
-            train_data = dataset.take(val_start).concatenate(dataset.skip(val_end))
+        history = history.history
 
-            # Batch the datasets for training and validation
-            # This is used to train the model on the data in batches
-            val_data = val_data.batch(fit_batch_size)
-            train_data = train_data.batch(fit_batch_size)
-
-            # Train the model on the data for this fold
-            # Fitting the model trains it on the data and evaluates it on the validation data
-            history = model.fit(
-                train_data,
-                epochs=fit_epochs,
-                verbose=fit_log_verbosity,
-                callbacks=[early_stopping],
-                validation_data=val_data,
-            )
-
-            # Append the history of the fold to the list of fold histories
-            fold_histories.append(history.history)
-
-        # Average the metrics across folds to get the final metrics
-        # This is used to evaluate the model's performance on the data
+        # Calculate average metrics
         avg_metrics = {
-            "training_loss": np.mean([h["loss"][-1] for h in fold_histories]),
-            "training_accuracy": np.mean([h["acc"][-1] for h in fold_histories]),
-            "validation_loss": np.mean([h["val_loss"][-1] for h in fold_histories]),
-            "validation_accuracy": np.mean([h["val_acc"][-1] for h in fold_histories]),
+            "accuracy": np.mean(history["accuracy"]),
+            "loss": np.mean(history["loss"]),
+            "val_accuracy": np.mean(history["val_accuracy"]),
+            "val_loss": np.mean(history["val_loss"]),
         }
 
-        # Get predictions for test data
-        # This is used to evaluate the model's performance on unseen data
+        # Use best model for predictions
         predictions = model.predict(x_val)
 
         return model, predictions, avg_metrics
