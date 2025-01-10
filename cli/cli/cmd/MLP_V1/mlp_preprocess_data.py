@@ -1,5 +1,4 @@
 import random
-from numpy import float32
 
 # nltk imports
 from nltk import download
@@ -14,7 +13,10 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 # Custom imports
 from cli.cmd.utils.training_data_format import TrainingDataFormat
 from cli.cmd.utils.validation_data_format import ValidationDataFormat
-from cli.cmd.MLP_V1.mlp_tweets_labels_wrapper import MLP_TWEETS_LABELS_WRAPPER
+from cli.cmd.MLP_V1.wrapper import (
+    MLP_TWEETS_LABELS_WRAPPER,
+    MLP_PREPOCESS_PARAM_WRAPPER,
+)
 
 
 class MLP_PREPOCESS_DATA:
@@ -24,19 +26,23 @@ class MLP_PREPOCESS_DATA:
         2. Tokenizing and vectorizing the data in order to pass it to the model
     """
 
-    # Brute data as extracted from the dataset
-    brute_training_data: list[TrainingDataFormat] = []
-    brute_validation_data: list[ValidationDataFormat] = []
-
     # Formatted data
     formatted_training_data: MLP_TWEETS_LABELS_WRAPPER = MLP_TWEETS_LABELS_WRAPPER()
     formatted_validation_tweets: list[str] = []
 
-    NUMBER_OF_VOTES = 6
+    NUMBER_OF_VOTES: int = 6
 
-    def __init__(self, brute_training_data, brute_validation_data):
+    def __init__(
+        self,
+        brute_training_data: list[TrainingDataFormat],
+        brute_validation_data: list[ValidationDataFormat],
+        kwargs: MLP_PREPOCESS_PARAM_WRAPPER,
+        top_k=20000,
+    ):
         self.brute_training_data = brute_training_data
         self.brute_validation_data = brute_validation_data
+        self.kwargs = kwargs
+        self.top_k = top_k
 
     def __step_1_format_and_clean_training_data(self, seed=123):
         # Initialize the data
@@ -46,7 +52,7 @@ class MLP_PREPOCESS_DATA:
         # Extract the tweets and the labels from the training data
         for trainingDataObject in self.brute_training_data:
             train_data.append(trainingDataObject.tweet)
-            validation_data.labels.append(
+            self.formatted_training_data.labels.append(
                 self.__is_sexist(trainingDataObject.labels_task1)
             )
 
@@ -58,67 +64,56 @@ class MLP_PREPOCESS_DATA:
         self.formatted_training_data.tweets = self.__clean(train_data)
         self.formatted_validation_tweets = self.__clean(validation_data)
 
-        # Shuffle the training data and labels.
+        # Shuffle the training data and labels with the same seed so that they are still aligned
         random.seed(seed)
         random.shuffle(self.formatted_training_data.tweets)
         random.seed(seed)
         random.shuffle(self.formatted_training_data.labels)
 
-    def __step_2_vectorize(
-        self,
-        top_k: int,
-        token_mode: str,
-        ngram_range: tuple[int, int],
-        min_document_frequency: int,
-    ):
-        # Create keyword arguments to pass to the 'tf-idf' vectorizer.
-        kwargs = {
-            "dtype": float32,
-            "min_df": min_document_frequency,
-            "analyzer": token_mode,
-            "ngram_range": ngram_range,
-            "decode_error": "strict",
-            "strip_accents": "unicode",
-            "lowercase": True,
-        }
-
-        vectorizer = TfidfVectorizer(**kwargs)
+    def __step_2_vectorize(self):
+        # Initialize the vectorizer
+        vectorizer = TfidfVectorizer(**vars(self.kwargs))
 
         # Learn vocabulary from training texts and vectorize training texts.
-        x_train = vectorizer.fit_transform(self.training_tweets)
+        x_train = vectorizer.fit_transform(self.formatted_training_data.tweets)
 
         # Vectorize validation texts.
-        x_val = vectorizer.transform(self.validation_tweets)
+        x_val = vectorizer.transform(self.formatted_validation_tweets)
 
         # Select top 'k' of the vectorized features.
-        selector = SelectKBest(f_classif, k=min(top_k, x_train.shape[1]))
-        selector.fit(x_train, self.trainning_labels)
+        selector = SelectKBest(f_classif, k=min(self.top_k, x_train.shape[1]))
+        selector.fit(x_train, self.formatted_training_data.labels)
         x_train = selector.transform(x_train).astype("float32")
         x_val = selector.transform(x_val).astype("float32")
+
         return x_train, x_val
 
-    def __clean(self, tweets: list[str]) -> list[str]:
+    def __clean(self, data_array: list[str]) -> list[str]:
 
         download("punkt_tab")
         download("stopwords")
 
         stop_words = set(stopwords.words("english"))
 
-        for data in self.training_dataset:
+        cleaned_data = []
 
-            sentence = word_tokenize(data.tweet.lower())
+        for data in data_array:
+
+            sentence = word_tokenize(data)
 
             filtered = [word for word in sentence if word.isalnum()]
 
             filtered = [word for word in filtered if word not in stop_words]
 
-            data.tweet = " ".join(filtered)
+            cleaned_data.append(" ".join(filtered))
 
-    def __is_sexist(self, data: TrainingDataFormat):
+        return cleaned_data
+
+    def __is_sexist(self, data: list[str]):
 
         yes = 0
 
-        for label in data.labels_task1:
+        for label in data:
             if label == "YES":
                 yes += 1
 

@@ -9,41 +9,52 @@ from rich.progress import track
 from cli.cmd.utils.training_data_format import TrainingDataFormat
 from cli.cmd.utils.validation_data_format import ValidationDataFormat
 
+# custom imports
+from cli.cmd.MLP_V1.mlp_prepare_model import MLP_MODEL
+from cli.cmd.MLP_V1.wrapper import MLP_MODEL_PARAMS_WRAPPER, MLP_PREPOCESS_PARAM_WRAPPER
+
 app = typer.Typer(
     help="This is a CLI tool detect sexism in text.", no_args_is_help=True
 )
 
 
 @app.command()
-def ping():
-    typer.echo("Pong")
-
-
-@app.command()
-def hello(name: str):
-    typer.echo(f"Hello {name}")
-
-
-@app.command()
 def train(
-    file_training_data: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
-    file_testing_data: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
+    file_training_data: Annotated[
+        typer.FileText, typer.Option(encoding="UTF-8")
+    ] = "../cli-data/train.csv",
+    file_testing_data: Annotated[
+        typer.FileText, typer.Option(encoding="UTF-8")
+    ] = "../cli-data/test.csv",
     model: str = "MLP_V1",
-    seed: int = 123,
-    top_k: int = 20000,
-    token_mode: str = "word",
-    ngram_range: tuple[int, int] = (1, 2),
-    min_document_frequency: float = 0.01,
 ):
     # load training data
-    # train_set = read_csv_file(file_training_data, "trainning")
+    train_set = read_csv_file(file_training_data, "trainning")
     # load validation data
-    # validation_set = read_csv_file(file_testing_data, "validation")
+    validation_set = read_csv_file(file_testing_data, "validation")
 
     match model:
         case "MLP_V1":
+            # User message
             print("You have selected the MLP_V1 model")
+            # Vars
+            top_k = 20000
+            mlp_model_params = MLP_MODEL_PARAMS_WRAPPER(
+                num_classes=2, layes=2, units=4, dropout_rate=0.3, input_shape=(1, 5)
+            )
 
+            mlp_preprocess_params = MLP_PREPOCESS_PARAM_WRAPPER(
+                dtype=float,
+                min_df=1,
+                analyzer="word",
+                ngram_range=(1, 2),
+                decode_error="strict",
+            )
+            # get the model
+            mlp_model = MLP_MODEL(mlp_model_params)
+            model = mlp_model.get_model(
+                train_set, validation_set, mlp_preprocess_params, top_k
+            )
         case _:
             print("You haven't selected a model yet")
 
