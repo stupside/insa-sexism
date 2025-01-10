@@ -96,8 +96,8 @@ class DataStore:
             # Convert to lowercase and tokenize
             tokens = word_tokenize(tweet.lower())
 
-            filtered = [stemmer.stem(word) for word in tokens if word.isalnum()]
-            filtered = [lemmatizer.lemmatize(word) for word in tokens if word.isalnum()]
+            filtered = [stemmer.stem(word) for word in tokens]
+            filtered = [lemmatizer.lemmatize(word) for word in tokens]
 
             # Remove stopwords
             filtered = [word for word in filtered if word not in stop_words]
