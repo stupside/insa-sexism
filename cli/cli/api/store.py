@@ -128,17 +128,67 @@ class DataStore:
 
         #     data.tweet = " ".join(filtered)
 
-    def is_sexist(self, data: TrainData):
-        yes = 0
+    def is_sexist(self, data: TrainData) -> bool:
+        # Initialize weights for different types of sexism
+        sexism_weights = {
+            "-": 0.5,
+            "DIRECT": 1.0,
+            "JUDGEMENTAL": 0.8,
+            "REPORTED": 0.7,
+        }
 
-        for label in data.labels_task1:
-            if label == "YES":
-                yes += 1
+        # Initialize demographic weights (optional tuning based on analysis)
+        demographic_weights = {
+            "gender": {"F": 1.2, "M": 0.8},  # Slight bias towards female annotators
+            "age": {"18-22": 1.0, "23-45": 1.0, "46+": 1.0},  # Equal weighting for now
+            "ethnicity": {},  # Placeholder for future analysis
+            "education": {},  # Placeholder for future analysis
+        }
 
-        if yes >= (self.NUMBER_OF_VOTES / 2):
-            return 1
+        total_score = 0
+        valid_votes = 0
 
-        return 0
+        for idx in range(len(data.annotators)):
+
+            task1_label = data.labels_task1[idx]
+            task2_label = data.labels_task2[idx]
+
+            age = data.age_annotators[idx]
+            gender = data.gender_annotators[idx]
+
+            # Skip invalid or incomplete annotations
+            if task1_label not in ["YES", "NO"] or task2_label not in sexism_weights:
+                continue
+
+            vote_score = 0
+            valid_votes += 1
+
+            # Calculate sexism score
+            if task1_label == "YES":
+                vote_score = sexism_weights[task2_label]
+            elif task1_label == "NO":
+                vote_score = -1  # Slight penalty for NO votes
+
+            # Apply demographic adjustments (if available)
+            if gender in demographic_weights["gender"]:
+                vote_score *= demographic_weights["gender"][gender]
+            if age in demographic_weights["age"]:
+                vote_score *= demographic_weights["age"][age]
+
+            total_score += vote_score
+
+        # Normalize score (-1 to 1 range)
+        if valid_votes == 0:
+            raise ValueError("No valid votes found for this data point.")
+
+        normalized_score = total_score / valid_votes
+        print(f"Normalized score: {normalized_score}")
+
+        # Set a decision threshold
+
+        threshold = 0  # Example threshold, tune based on validation
+
+        return normalized_score >= threshold
 
     def get_training_set(self) -> Trainer:
 

@@ -125,7 +125,7 @@ class Trainer:
             # This helps prevent overfitting and improves generalization of the model
             chain = Dense(
                 units=layer_units,
-                activation="relu",
+                activation="relu",  # Rectified Linear Unit activation function
                 kernel_regularizer=l2(0.01),  # L2 regularization
             )(chain)
 
@@ -135,6 +135,8 @@ class Trainer:
 
             # Add Dropout
             # This helps prevent overfitting by randomly setting a fraction of input units to 0
+            # Nombre de neuronne activer a chaque epoch.
+            # Add more dropout layers for more regularization and less overfitting
             chain = Dropout(rate=dropout_rate)(chain)
 
         # Add the last layer
@@ -206,6 +208,9 @@ class Trainer:
             dropout_rate=dropout_rate,
         )
 
+        # Adam is used to minimize the loss function during training.
+        # It compare to SGD (Stochastic Gradient Descent), but is more efficient and requires less memory.
+        # It is a function or an algorithm that adjusts the attributes of the NN, such as weights and learning rates.
         fold_optimizer = Adam(learning_rate=adam_learning_rate)
 
         model.compile(optimizer=fold_optimizer, loss=loss, metrics=["accuracy"])
@@ -218,8 +223,8 @@ class Trainer:
         )
 
         history = model.fit(
-            x_train,
-            self.train_labels,
+            x=x_train,
+            y=self.train_labels,
             validation_data=(x_train, self.train_labels),
             epochs=fit_epochs,
             batch_size=fit_batch_size,
