@@ -1,8 +1,8 @@
 train:
-	sxm train --train "../cli-data/train.csv" --test "../cli-data/test.csv"
+	sxm train --train="../cli-data/train.csv" --test="../cli-data/test.csv" --output="./out/model.pt"
 
-analyze-train-set:
-	sxm analyze-train-set --train "../cli-data/train.csv"
+predict:
+	sxm predict --model="./out/model.pt" --test="../cli-data/test.csv" --output="./out/model.predictions.csv"
 
 install:
 	poetry install

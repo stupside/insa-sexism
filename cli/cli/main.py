@@ -1,10 +1,27 @@
 import csv
 import typer
 
+from torch import save, Tensor
+from numpy import append
+
+from rich.progress import track
+
 from typing_extensions import Annotated
 
-from matplotlib import pyplot
-from tensorflow import summary
+from .src.loader import load
+
+from .src.vectorizer import TextVectorizer
+
+from .src.sets.test import TestDataSet
+from .src.sets.train import TrainDataSet
+
+from .src.types.test import TestData
+from .src.types.train import TrainData
+
+from .src.model import Model, ModelOptions
+from .src.metric import MetricCompute
+from .src.trainer import fit, predict, TrainOptions
+
 
 app = typer.Typer(
     help="This is a CLI tool detect sexism in text.", no_args_is_help=True
@@ -23,139 +40,80 @@ def hello(name: str):
 
 @app.command()
 def train(
-    # Sets
     test: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
     train: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
-    # Debug
-    fit_log_verbosity: int = 1,
-    # Model
-    output: str = "./out/model.keras",
-    # Training
-    layers: int = 2,
-    fit_epochs: int = 30,
-    ngram_top_k: int = 10_000,
-    ngram_range: tuple[int, int] = (1, 2),
-    dropout_rate: float = 0.2,
-    fit_batch_size: int = 64,
-    kfolds_n_splits: int = 10,
-    mlp_dense_units: int = 32,
-    adam_learning_rate: float = 5e-4,
-    early_stopping_patience: int = 3,
+    output: Annotated[str, typer.Option(help="File to save the model to")],
 ):
 
-    from ast import literal_eval
+    vectorizer = TextVectorizer(top_k=10_000)
 
-    from .api.store import DataStore, TrainData, TestData
+    tests = load(test)
+    testset = TestDataSet(vectorizer=vectorizer)
+    for test in tests:
+        testset.datas = append(testset.datas, TestData(**test))
 
-    trainset = DataStore()
+    trains = load(train)
+    trainset = TrainDataSet(vectorizer=vectorizer)
+    for train in trains:
+        trainset.datas = append(trainset.datas, TrainData(**train))
 
-    from rich.progress import track
+    vectorizer.fit([tweet.tweet for tweet in trainset.datas])
 
-    # Load the training data
-    for row in track(csv.DictReader(train), description="Loading training data"):
-        # Convert string representations of arrays to actual arrays
-        for key, value in row.items():
-            if value.startswith("[") and value.endswith("]"):
-                try:
-                    row[key] = literal_eval(value)
-                except (ValueError, SyntaxError):
-                    pass  # Keep original string if parsing fails
+    # Get vocabulary size for input dimension
+    vocab_size = len(vectorizer.vocabulary)
 
-        trainset.add_train_data(TrainData(**row))
+    opts = ModelOptions(
+        input_dim=vocab_size,
+        output_dim=2,
+        hidden_dim=64,
+        num_layers=1,
+        dropout_rate=0.5,
+    )
+    model = Model.get(options=opts)
 
-    # Load the testing data
-    for row in track(csv.DictReader(test), description="Loading testing data"):
-        # Convert string representations of arrays to actual arrays
-        for key, value in row.items():
-            if value.startswith("[") and value.endswith("]"):
-                try:
-                    row[key] = literal_eval
-                except (ValueError, SyntaxError):
-                    pass
-
-        trainset.add_test_data(TestData(**row))
-
-    # Cleaning the data : remove punctuation, stopwords, etc.
-    trainset.clean_train_data()
-
-    # Get both the training data and the labels associated with it
-    training_set = trainset.get_training_set()
-
-    writer = summary.create_file_writer(output + ".logs")
-
-    writer.set_as_default()
-
-    model, predictions, accuracy = training_set.train_ngram_model(
-        layers=layers,
-        fit_epochs=fit_epochs,
-        ngram_top_k=ngram_top_k,
-        ngram_range=ngram_range,
-        dropout_rate=dropout_rate,
-        fit_batch_size=fit_batch_size,
-        kfolds_n_splits=kfolds_n_splits,
-        mlp_dense_units=mlp_dense_units,
-        fit_log_verbosity=fit_log_verbosity,
-        adam_learning_rate=adam_learning_rate,
-        early_stopping_patience=early_stopping_patience,
+    opts = TrainOptions(
+        num_epochs=15,
+        batch_size=32,
+        learn_rate=1e-3,
+        num_workers=0,
+        weight_decay=1e-4,
+        cross_entropy_weight=[1.0, 2.0],
     )
 
-    print(accuracy)
+    fitting = fit(model, options=opts, dataset=trainset)
 
-    model.summary()
+    metrics: list[MetricCompute] = []
+    for _, metric in track(fitting, description="Fitting model", total=opts.num_epochs):
+        metrics.append(metric)
 
-    model.save(output)
+    for metric in metrics:
+        typer.echo(
+            f"F1: {metric.f1}, AUROC: {metric.auroc}, Recall: {metric.recall}, Accuracy: {metric.accuracy}, Precision: {metric.precision}"
+        )
+        typer.echo(f"Confusion Matrix: {metric.confusion_matrix}")
 
-    with open(output + ".predictions", "w") as f:
-        writer = csv.writer(f)
+    typer.echo(f"Saving model to {output}")
+    save(model.state_dict(), output)
+
+    predictions: list[Tensor] = []
+    for tweet in track(
+        testset.datas, description="Predicting", total=len(testset.datas)
+    ):
+        predictions.append(predict(model, vectorizer, tweet.tweet))
+
+    with open(output + ".test", "w") as file:
+        writer = csv.writer(file)
 
         writer.writerow(["tweet", "prediction"])
 
-        for idx, prediction in enumerate(predictions):
+        for idx, prediction in track(
+            enumerate(predictions),
+            description="Saving predictions",
+            total=len(predictions),
+        ):
             writer.writerow(
                 [
-                    trainset.test_set[idx].tweet,
-                    prediction,
+                    testset.datas[idx].tweet,
+                    "YES" if prediction == 1 else "NO",
                 ]
             )
-
-
-@app.command()
-def analyze_train_set(
-    train: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
-):
-    from .api.store import DataStore, TrainData
-
-    trainset = DataStore()
-
-    from ast import literal_eval
-
-    # Load the training data
-    for row in csv.DictReader(train):
-        # Convert string representations of arrays to actual arrays
-        for key, value in row.items():
-            if value.startswith("[") and value.endswith("]"):
-                try:
-                    row[key] = literal_eval(value)
-                except (ValueError, SyntaxError):
-                    pass  # Keep original string if parsing fails
-
-        trainset.add_train_data(TrainData(**row))
-
-    trainset.clean_train_data()
-
-    trainer = trainset.get_training_set()
-
-    # Count label equals to 1
-    sexist = 0
-    non_sexist = 0
-    for label in trainer.train_labels:
-        if label == 1:
-            sexist += 1
-        else:
-            non_sexist += 1
-
-    pyplot.bar(
-        ["sexist", "non-sexist"], [sexist, non_sexist], label="Sexist vs Non-Sexist"
-    )
-
-    pyplot.show()
