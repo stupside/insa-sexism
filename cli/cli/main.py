@@ -117,3 +117,24 @@ def train(
                     "YES" if prediction == 1 else "NO",
                 ]
             )
+
+
+@app.command()
+def check_balance(
+    train: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
+):
+    trains = load(train)
+    trainset = TrainDataSet(vectorizer=None)
+    for train in trains:
+        trainset.datas = append(trainset.datas, TrainData(**train))
+
+    num_no = 0
+    num_yes = 0
+    for _, data in enumerate(trainset.datas):
+        sexist = trainset.check_is_sexist(data)
+        if not sexist:
+            num_no += 1
+        else:
+            num_yes += 1
+
+    typer.echo(f"Sexist: {num_yes}, Nonsexist: {num_no} ({num_yes / num_no:.2f})")

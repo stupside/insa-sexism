@@ -1,5 +1,3 @@
-from numpy import ndarray, empty
-
 from torch.utils.data import Dataset
 
 from cli.src.clean import clean_text
@@ -10,7 +8,7 @@ from cli.src.vectorizer import TextVectorizer
 
 
 class TestDataSet(Dataset):
-    datas: ndarray = empty((0,), dtype=TestData)
+    datas: list[TestData] = []
 
     vectorizer: TextVectorizer
 

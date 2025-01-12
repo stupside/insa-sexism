@@ -4,6 +4,9 @@ train:
 predict:
 	sxm predict --model="./out/model.pt" --test="../cli-data/test.csv" --output="./out/model.predictions.csv"
 
+check-balance:
+	sxm check-balance --train="../cli-data/train.csv"
+
 install:
 	poetry install
 

@@ -2,7 +2,6 @@ import torch
 
 from torch.utils.data import Dataset
 
-from numpy import ndarray, empty
 
 from cli.src.clean import clean_text
 
@@ -12,7 +11,7 @@ from cli.src.vectorizer import TextVectorizer
 
 
 class TrainDataSet(Dataset):
-    datas: ndarray = empty((0,), dtype=TrainData)
+    datas: list[TrainData] = []
 
     vectorizer: TextVectorizer
 
@@ -27,14 +26,15 @@ class TrainDataSet(Dataset):
         data = self.datas[idx]
 
         tweet = clean_text(data.tweet)
-        sexist = self.__is_sexist(data)
+        sexist = self.check_is_sexist(data)
 
         tweet = self.vectorizer.vectorize(tweet)
         sexist = torch.tensor(sexist, dtype=torch.long)
 
         return tweet, sexist
 
-    def __is_sexist(self, data: TrainData) -> bool:
+    def check_is_sexist(self, data: TrainData) -> bool:
+
         # Initialize weights for different types of sexism
         sexism_weights = {
             "-": 0.5,
@@ -89,8 +89,4 @@ class TrainDataSet(Dataset):
 
         normalized_score = total_score / valid_votes
 
-        # Set a decision threshold
-
-        threshold = 0  # Example threshold, tune based on validation
-
-        return normalized_score >= threshold
+        return normalized_score >= 0.1
