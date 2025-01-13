@@ -55,6 +55,7 @@ def train(
             model = mlp_model.get_model(
                 train_set, validation_set, mlp_preprocess_params, top_k
             )
+
         case _:
             print("You haven't selected a model yet")
 

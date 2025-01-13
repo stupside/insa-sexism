@@ -38,3 +38,7 @@ class MLP_PREPOCESS_PARAM_WRAPPER:
 
     def __init__(self, **fields):
         self.__dict__.update(**fields)
+
+
+class MLP_TRAIN_PARAM_WRAPPER:
+    pass

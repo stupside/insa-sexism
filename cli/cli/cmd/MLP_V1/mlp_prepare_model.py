@@ -10,7 +10,7 @@ from cli.cmd.MLP_V1.mlp_preprocess_data import MLP_PREPOCESS_DATA
 from cli.cmd.MLP_V1.wrapper import MLP_MODEL_PARAMS_WRAPPER, MLP_PREPOCESS_PARAM_WRAPPER
 
 
-class MLP_MODEL:
+class MLP_PREPARE_MODEL:
     """
     This class is used to prepare the model for the MLP
     """
@@ -33,7 +33,7 @@ class MLP_MODEL:
             units = self.num_classes
         return units, activation
 
-    def __mlp_model(self):
+    def mlp_create_model(self):
 
         op_units, op_activation = self.__get_last_layer_units_and_activation()
         model = models.Sequential()
@@ -47,22 +47,6 @@ class MLP_MODEL:
 
         model.add(Dense(units=op_units, activation=op_activation))
         return model
-
-    def get_model(
-        self,
-        training_data: list[TrainingDataFormat],
-        validation_data: list[ValidationDataFormat],
-        vectorizer_param: MLP_PREPOCESS_PARAM_WRAPPER,
-        top_k: int,
-    ):
-        # Preprocess the data
-        data_preprocessor = MLP_PREPOCESS_DATA(
-            training_data, validation_data, vectorizer_param, top_k
-        )
-        data_preprocessor.run()
-
-        # Prepare the model
-        return self.__mlp_model()
 
 
 if __name__ == "main":
