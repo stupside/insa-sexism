@@ -7,8 +7,10 @@ predict:
 check-balance:
 	sxm check-balance --train="../cli-data/train.csv"
 
-install:
-	poetry install
+venv-setup:
+	poetry env use 3.12
+	poetry env activate
 
-copy-venv:
-	poetry env info --path | pbcopy
+venv-get-path:
+	poetry env info --path
+
