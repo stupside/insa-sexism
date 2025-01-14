@@ -46,9 +46,6 @@ class TrainDataSet(Dataset):
         # Initialize demographic weights (optional tuning based on analysis)
         demographic_weights = {
             "gender": {"F": 1.2, "M": 0.8},  # Slight bias towards female annotators
-            "age": {"18-22": 1.0, "23-45": 1.0, "46+": 1.0},  # Equal weighting for now
-            "ethnicity": {},  # Placeholder for future analysis
-            "education": {},  # Placeholder for future analysis
         }
 
         total_score = 0
@@ -59,7 +56,6 @@ class TrainDataSet(Dataset):
             task1_label = data.labels_task1[idx]
             task2_label = data.labels_task2[idx]
 
-            age = data.age_annotators[idx]
             gender = data.gender_annotators[idx]
 
             # Skip invalid or incomplete annotations
@@ -73,13 +69,11 @@ class TrainDataSet(Dataset):
             if task1_label == "YES":
                 vote_score = sexism_weights[task2_label]
             elif task1_label == "NO":
-                vote_score = -1  # Slight penalty for NO votes
+                vote_score = -0.5  # Slight penalty for NO votes
 
             # Apply demographic adjustments (if available)
             if gender in demographic_weights["gender"]:
                 vote_score *= demographic_weights["gender"][gender]
-            if age in demographic_weights["age"]:
-                vote_score *= demographic_weights["age"][age]
 
             total_score += vote_score
 
@@ -89,4 +83,4 @@ class TrainDataSet(Dataset):
 
         normalized_score = total_score / valid_votes
 
-        return normalized_score >= 0.1
+        return normalized_score >= 0.0

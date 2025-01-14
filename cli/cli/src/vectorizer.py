@@ -1,39 +1,40 @@
 import torch
-
 from collections import Counter
-
 from .clean import clean_text
 
 
-# TODO: https://textattack.readthedocs.io/en/latest/2notebook/3_Augmentations.html
 class TextVectorizer:
-    def __init__(self, top_k: int):
-        self.top_k = top_k
-        self.vocabulary = {}
+    def __init__(self, max_length: int):
+        self.vocabulary = {"<PAD>": 0, "<UNK>": 1}
+        self.max_length = max_length
 
     def fit(self, texts: list[str]):
-
-        # Clean all texts
-        texts = [clean_text(text) for text in texts]
-
-        # Count all words across all texts
+        # Clean and tokenize all texts
         word_counts = Counter()
         for text in texts:
+            text = clean_text(text)
             words = text.split()
             word_counts.update(words)
 
-        # Keep only top_k most common words
-        most_common = word_counts.most_common(self.top_k)
-        self.vocabulary = {word: idx for idx, (word, _) in enumerate(most_common)}
+        # Add all unique words to vocabulary
+        for word in word_counts:
+            if word not in self.vocabulary:
+                self.vocabulary[word] = len(self.vocabulary)
 
     def vectorize(self, text: str) -> torch.Tensor:
+        text = clean_text(text)
         words = text.split()
-        vector = torch.zeros(len(self.vocabulary), dtype=torch.float32)
 
-        # Count words that appear in vocabulary
-        word_counts = Counter(words)
-        for word, count in word_counts.items():
-            if word in self.vocabulary:
-                vector[self.vocabulary[word]] = count
+        # Convert to indices with truncation and padding
+        indices = [
+            self.vocabulary.get(word, self.vocabulary["<UNK>"])
+            for word in words[: self.max_length]
+        ]
 
-        return vector
+        # Pad if necessary
+        if len(indices) < self.max_length:
+            indices.extend(
+                [self.vocabulary["<PAD>"]] * (self.max_length - len(indices))
+            )
+
+        return torch.tensor(indices[: self.max_length], dtype=torch.long)

@@ -5,6 +5,7 @@ from torch import save, Tensor
 from numpy import append
 
 from rich.progress import track
+from rich.console import Console
 
 from typing_extensions import Annotated
 
@@ -27,6 +28,8 @@ app = typer.Typer(
     help="This is a CLI tool detect sexism in text.", no_args_is_help=True
 )
 
+console = Console()
+
 
 @app.command()
 def ping():
@@ -44,8 +47,8 @@ def train(
     train: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
     output: Annotated[str, typer.Option(help="File to save the model to")],
 ):
-
-    vectorizer = TextVectorizer(top_k=10_000)
+    # Initialize vectorizer with just max_length
+    vectorizer = TextVectorizer(max_length=248)
 
     tests = load(test)
     testset = TestDataSet(vectorizer=vectorizer)
@@ -61,38 +64,52 @@ def train(
 
     # Get vocabulary size for input dimension
     vocab_size = len(vectorizer.vocabulary)
+    console.log(f"Vocabulary size: {vocab_size}")
+
+    # Save the vocabulary to a file
+    with open(output + ".vocab", "w") as file:
+        writer = csv.writer(file)
+        writer.writerow(["word", "index"])
+
+        for word, index in vectorizer.vocabulary.items():
+            writer.writerow([word, index])
 
     opts = ModelOptions(
         input_dim=vocab_size,
-        output_dim=2,
-        hidden_dim=64,
-        num_layers=1,
+        output_dim=1,
+        layer_dims=[256, 128, 64],
         dropout_rate=0.5,
+        embedding_dim=768,
+        vocab_size=vocab_size,
     )
     model = Model.get(options=opts)
 
     opts = TrainOptions(
-        num_epochs=15,
-        batch_size=32,
-        learn_rate=1e-3,
+        seed=150,
+        num_epochs=16,
+        batch_size=16,
+        learn_rate=1e-4,
         num_workers=0,
-        weight_decay=1e-4,
-        cross_entropy_weight=[1.0, 2.0],
+        weight_decay=1e-5,
+        train_val_split=0.85,
     )
 
     fitting = fit(model, options=opts, dataset=trainset)
 
-    metrics: list[MetricCompute] = []
-    for _, metric in track(fitting, description="Fitting model", total=opts.num_epochs):
-        metrics.append(metric)
+    val_metrics: list[MetricCompute] = []
+    train_metrics: list[MetricCompute] = []
+    for _, train_metric, val_metric in track(
+        fitting, description="Fitting model", total=opts.num_epochs
+    ):
+        val_metrics.append(val_metric)
+        train_metrics.append(train_metric)
 
-    for metric in metrics:
-        typer.echo(
-            f"F1: {metric.f1}, AUROC: {metric.auroc}, Recall: {metric.recall}, Accuracy: {metric.accuracy}, Precision: {metric.precision}"
-        )
-        typer.echo(f"Confusion Matrix: {metric.confusion_matrix}")
+    for idx, (train_metric, val_metric) in enumerate(zip(train_metrics, val_metrics)):
+        console.log(f"Epoch {idx + 1}/{opts.num_epochs}")
+        console.log(f"Train {train_metric}")
+        console.log(f"Validation {val_metric}")
 
-    typer.echo(f"Saving model to {output}")
+    console.log(f"Saving model to {output}")
     save(model.state_dict(), output)
 
     predictions: list[Tensor] = []
@@ -137,4 +154,4 @@ def check_balance(
         else:
             num_yes += 1
 
-    typer.echo(f"Sexist: {num_yes}, Nonsexist: {num_no} ({num_yes / num_no:.2f})")
+    console.log(f"Sexist: {num_yes}, Nonsexist: {num_no} ({num_yes / num_no:.2f})")

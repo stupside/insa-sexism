@@ -28,6 +28,9 @@ class MetricCompute:
     ):
         self.__dict__.update(kwargs)
 
+    def __str__(self):
+        return f"F1: {self.f1}, AUROC: {self.auroc}, R: {self.recall}, A: {self.accuracy}, P: {self.precision}, M: {self.confusion_matrix}"
+
 
 class Metric:
 

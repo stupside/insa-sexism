@@ -8,6 +8,7 @@ import re
 
 import emoji
 
+download("wordnet")
 download("stopwords")
 
 stop_words = set(stopwords.words("english"))
@@ -25,13 +26,14 @@ def clean_text(text: str):
     # Remove URLs
     text = re.sub(r"http\S+|www\S+|https\S+", "", text, flags=re.MULTILINE)
 
-    # Remove mentions but keep the text
-    text = re.sub(r"@", "", text)
+    # Remove mentions and hashtags
+    text = re.sub(r"[@#](\w+)", "", text)
 
-    # Remove hashtags but keep the text
-    text = re.sub(r"#", "", text)
-
+    # Lowercase the text
     text = text.lower()
+
+    # Remove elongated words (e.g., 'loooove' -> 'love')
+    text = re.sub(r"(.)\1{2,}", r"\1", text)
 
     # Convert to lowercase and tokenize
     tokens = word_tokenize(text)
@@ -42,16 +44,15 @@ def clean_text(text: str):
     # Remove punctuations
     tokens = [word for word in tokens if word.isalnum()]
 
-    # Remove short words
-    tokens = [word for word in tokens if len(word) > 2]
-
     # Stem and lemmatize
-    filtered = [stemmer.stem(word) for word in tokens]
-    filtered = [lemmatizer.lemmatize(word) for word in tokens]
+    tokens = [lemmatizer.lemmatize(stemmer.stem(word)) for word in tokens]
 
     # Remove stopwords
-    filtered = [word for word in filtered if word not in stop_words]
+    tokens = [word for word in tokens if word not in stop_words]
 
-    text = " ".join(filtered)
+    # # Remove short words
+    # tokens = [word for word in tokens if len(word) > 2]
+
+    text = " ".join(tokens)
 
     return text
