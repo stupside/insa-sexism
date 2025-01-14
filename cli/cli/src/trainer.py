@@ -57,7 +57,7 @@ def fit(model: Model, options: TrainOptions, dataset: TrainDataSet):
     )
 
     # Simple BCE loss without weights for binary classification
-    criterion = nn.BCELoss().to(model.device)
+    criterion = nn.BCELoss()
 
     optimizer = torch.optim.Adam(
         model.parameters(), lr=options.learn_rate, weight_decay=options.weight_decay

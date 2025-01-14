@@ -31,7 +31,9 @@ class Model(nn.Module):
         self.device = device
 
         # Add embedding layer
-        self.embedding = nn.Embedding(options.vocab_size, options.embedding_dim)
+        self.embedding = nn.Embedding(
+            num_embeddings=options.vocab_size, embedding_dim=options.embedding_dim
+        )
 
         self.seq = nn.Sequential()
 
@@ -81,4 +83,4 @@ class Model(nn.Module):
 
         classifier = Model(device=device, options=options)
 
-        return classifier.to(device)
+        return classifier
