@@ -10,8 +10,9 @@ from cli.cmd.utils.training_data_format import TrainingDataFormat
 from cli.cmd.utils.validation_data_format import ValidationDataFormat
 
 # custom imports
-from cli.cmd.MLP_V1.mlp_prepare_model import MLP_MODEL
+# from cli.cmd.MLP_V1.mlp_prepare_model import MLP_MODEL
 from cli.cmd.MLP_V1.wrapper import MLP_MODEL_PARAMS_WRAPPER, MLP_PREPOCESS_PARAM_WRAPPER
+import cli.cmd.sepCNN.main as sepCNN
 
 app = typer.Typer(
     help="This is a CLI tool detect sexism in text.", no_args_is_help=True
@@ -26,7 +27,7 @@ def train(
     file_testing_data: Annotated[
         typer.FileText, typer.Option(encoding="UTF-8")
     ] = "../cli-data/test.csv",
-    model: str = "MLP_V1",
+    model: str = "sepCNN",
 ):
     # load training data
     train_set = read_csv_file(file_training_data, "trainning")
@@ -56,6 +57,16 @@ def train(
                 train_set, validation_set, mlp_preprocess_params, top_k
             )
 
+        case "sepCNN":
+            print("You have selected the sepCNN model")
+            # test preprocess data
+            # sepCNN.preprocess_data(train_set, validation_set)
+            sepCNN.printHello()
+            ((tweets1, labels1), (tweets2, labels2)) = sepCNN.prepare_data(train_set)
+            print(len(labels2), len(tweets2))
+            print(len(labels1), len(tweets1))
+            print(len(labels2) + len(labels1))
+            pass
         case _:
             print("You haven't selected a model yet")
 

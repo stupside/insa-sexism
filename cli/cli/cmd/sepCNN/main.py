@@ -1,56 +1,18 @@
-"""Module to vectorize data.
-
-Converts the given training and validation texts into numerical tensors.
-"""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
-from tensorflow.python.keras.preprocessing import sequence
-from tensorflow.python.keras.preprocessing import text
-
-"""Module to create model.
-
-Helper functions to create a multi-layer perceptron model and a separable CNN
-model. These functions take the model hyper-parameters as input. This will
-allow us to create model instances with slightly varying architectures.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from keras._tf_keras.keras.preprocessing import text
+from keras._tf_keras.keras.preprocessing import sequence
 from tensorflow.python.keras import models
-
 from tensorflow.python.keras.layers import Dense
 from tensorflow.python.keras.layers import Dropout
 from tensorflow.python.keras.layers import Embedding
 from tensorflow.python.keras.layers import SeparableConv1D
 from tensorflow.python.keras.layers import MaxPooling1D
 from tensorflow.python.keras.layers import GlobalAveragePooling1D
-
-"""Module to train sequence model.
-
-Vectorizes training and validation texts into sequences and uses that for
-training a sequence model - a sepCNN model. We use sequence model for text
-classification when the ratio of number of samples to number of words per
-sample for the given dataset is very large (>~15K).
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import argparse
-import time
-
+import random
 import tensorflow as tf
-import numpy as np
-
-import build_model
-import load_data
-import vectorize_data
-import explore_data
 
 # Vectorization parameters
 
@@ -71,9 +33,72 @@ MIN_DOCUMENT_FREQUENCY = 2
 # will be truncated.
 MAX_SEQUENCE_LENGTH = 500
 
+NUMBER_OF_VOTES = 6
 
-def prepare_data():
-    pass
+
+def printHello():
+    print("Hello")
+
+
+def is_sexist(data: list[str]):
+
+    yes = 0
+
+    for label in data:
+        if label == "YES":
+            yes += 1
+
+    if yes >= (NUMBER_OF_VOTES / 2):
+
+        return 1
+
+    return 0
+
+
+def prepare_data(brute_training_data=[], testPoportion=0.2, seed=132):
+
+    # Initialize the data
+    train_data_neg = []
+    train_data_pos = []
+
+    # Extract the tweets and the labels from the training data
+    for trainingDataObject in brute_training_data:
+        is_sexist_bool = is_sexist(trainingDataObject.labels_task1)
+        if is_sexist_bool == 1:
+            train_data_pos.append(trainingDataObject.tweet)
+        else:
+            train_data_neg.append(trainingDataObject.tweet)
+
+    # separate the data into training and testing data based on the testProportion ensuring equal representation of both classes
+    train_data = (
+        train_data_neg[: int(len(train_data_neg) * (1 - testPoportion))]
+        + train_data_pos[: int(len(train_data_pos) * (1 - testPoportion))]
+    )
+    test_data = (
+        train_data_neg[int(len(train_data_neg) * (1 - testPoportion)) :]
+        + train_data_pos[int(len(train_data_pos) * (1 - testPoportion)) :]
+    )
+
+    # initiate labels for the training and testing data
+    train_labels = [0] * len(
+        train_data_neg[: int(len(train_data_neg) * (1 - testPoportion))]
+    ) + [1] * len(train_data_pos[: int(len(train_data_pos) * (1 - testPoportion))])
+    test_labels = [0] * len(
+        train_data_neg[int(len(train_data_neg) * (1 - testPoportion)) :]
+    ) + [1] * len(train_data_pos[int(len(train_data_pos) * (1 - testPoportion)) :])
+
+    # Shuffle the training data and labels with the same seed so that they are still aligned
+    random.seed(seed)
+    random.shuffle(train_data)
+    random.seed(seed)
+    random.shuffle(train_labels)
+
+    # shuffle the test data
+    random.seed(seed)
+    random.shuffle(test_data)
+    random.seed(seed)
+    random.shuffle(test_labels)
+    return (train_data, train_labels), (test_data, test_labels)
 
 
 # Vectorizing the data
@@ -260,6 +285,7 @@ def train_sequence_model(
 
     # Arguments
         data: tuples of training and test texts and labels.
+        (train_texts, train_labels), (val_texts, val_labels) = data
         learning_rate: float, learning rate for training model.
         epochs: int, number of epochs.
         batch_size: int, number of samples per batch.
@@ -346,5 +372,5 @@ def train_sequence_model(
     return history["val_acc"][-1], history["val_loss"][-1]
 
 
-if __name__ == "main":
-    pass
+def main(brute_training_data):
+    prepare_data(brute_training_data=brute_training_data)
