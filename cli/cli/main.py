@@ -1,17 +1,23 @@
 import csv
 import typer
 
-from torch import save, Tensor
-from numpy import append
 
-from rich.progress import track
+from hydra import compose, initialize
+from typing import List, Optional
+from omegaconf import DictConfig
+
+
+from numpy import append
+from torch import save, load, Tensor
+
 from rich.console import Console
+from rich.progress import track
 
 from typing_extensions import Annotated
 
-from .src.loader import load
+from .src.loader import read
 
-from .src.vectorizer import TextVectorizer
+from .src.vectorizer import TextVectorizer, TextVectorizerOptions
 
 from .src.sets.test import TestDataSet
 from .src.sets.train import TrainDataSet
@@ -20,7 +26,6 @@ from .src.types.test import TestData
 from .src.types.train import TrainData
 
 from .src.model import Model, ModelOptions
-from .src.metric import MetricCompute
 from .src.trainer import fit, predict, TrainOptions
 
 
@@ -31,101 +36,107 @@ app = typer.Typer(
 console = Console()
 
 
-@app.command()
-def ping():
-    typer.echo("Pong")
+class Config:
+    model: ModelOptions
+    train: TrainOptions
+    vectorizer: TextVectorizerOptions
 
 
-@app.command()
-def hello(name: str):
-    typer.echo(f"Hello {name}")
+def _compose(
+    config_path: str, config_name: str, overrides: Optional[List[str]]
+) -> DictConfig:
+    with initialize(config_path=config_path):
+        cfg = compose(
+            config_name=config_name, overrides=overrides, return_hydra_config=True
+        )
+
+        return cfg
+
+    raise ValueError("Could not load configuration")
 
 
 @app.command()
 def train(
-    test: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
-    train: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
-    output: Annotated[str, typer.Option(help="File to save the model to")],
+    # Files
+    train_file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
+    # Output
+    output_file: Annotated[str, typer.Option(help="File to save the model to")],
+    # Hydra options
+    overrides: Optional[List[str]] = typer.Argument(None),
 ):
-    # Initialize vectorizer with just max_length
-    vectorizer = TextVectorizer(max_length=248)
+    # Load the configuration
+    config: Config = _compose("./", "model.yaml", overrides)
 
-    tests = load(test)
-    testset = TestDataSet(vectorizer=vectorizer)
-    for test in tests:
-        testset.datas = append(testset.datas, TestData(**test))
+    # Load vectorizer
+    vectorizer = TextVectorizer(options=config.vectorizer, load=True)
 
-    trains = load(train)
+    # Load the model
+    model = Model.get(vocab_size=len(vectorizer.vocabulary), options=config.model)
+
+    # Load the train set
+    trains = read(train_file)
     trainset = TrainDataSet(vectorizer=vectorizer)
     for train in trains:
         trainset.datas = append(trainset.datas, TrainData(**train))
 
-    vectorizer.fit([tweet.tweet for tweet in trainset.datas])
+    # Train the model
+    train_metrics, val_metrics = fit(model, dataset=trainset, options=config.train)
 
-    # Get vocabulary size for input dimension
-    vocab_size = len(vectorizer.vocabulary)
-    console.log(f"Vocabulary size: {vocab_size}")
+    # Print the metrics
+    console.log(f"Train metrics: {train_metrics}")
+    console.log(f"Validation metrics: {val_metrics}")
 
-    # Save the vocabulary to a file
-    with open(output + ".vocab", "w") as file:
-        writer = csv.writer(file)
-        writer.writerow(["word", "index"])
+    # Save the model
+    save(model.state_dict(), output_file)
+    console.log(f"Model saved to {output_file}")
 
-        for word, index in vectorizer.vocabulary.items():
-            writer.writerow([word, index])
 
-    opts = ModelOptions(
-        input_dim=vocab_size,
-        output_dim=1,
-        layer_dims=[256, 128, 64],
-        dropout_rate=0.5,
-        embedding_dim=768,
-        vocab_size=vocab_size,
-    )
-    model = Model.get(options=opts)
+@app.command()
+def test(
+    # Files
+    test_file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
+    model_file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
+    # Output file path
+    output_path: Annotated[str, typer.Option(help="File to save the predictions to")],
+    # Hydra options
+    overrides: Optional[List[str]] = typer.Argument(None),
+):
+    # Load the configuration
+    config: Config = _compose("./", "model.yaml", overrides)
 
-    opts = TrainOptions(
-        seed=150,
-        num_epochs=16,
-        batch_size=16,
-        learn_rate=1e-4,
-        num_workers=0,
-        weight_decay=1e-5,
-        train_val_split=0.85,
-    )
+    # Create a vectorizer
+    vectorizer = TextVectorizer(options=config.vectorizer)
+    console.log(f"Vectorizer loaded with {len(vectorizer.vocabulary)} words")
 
-    fitting = fit(model, options=opts, dataset=trainset)
+    # Load the model
+    model = Model.get(vocab_size=len(vectorizer.vocabulary), options=config.model)
+    # Load the model weights
+    model.load_state_dict(load(model_file))
 
-    val_metrics: list[MetricCompute] = []
-    train_metrics: list[MetricCompute] = []
-    for _, train_metric, val_metric in track(
-        fitting, description="Fitting model", total=opts.num_epochs
-    ):
-        val_metrics.append(val_metric)
-        train_metrics.append(train_metric)
+    # Load the datasets
+    tests = read(test_file)
+    testset = TestDataSet(vectorizer=vectorizer)
+    for test in tests:
+        testset.datas = append(testset.datas, TestData(**test))
 
-    for idx, (train_metric, val_metric) in enumerate(zip(train_metrics, val_metrics)):
-        console.log(f"Epoch {idx + 1}/{opts.num_epochs}")
-        console.log(f"Train {train_metric}")
-        console.log(f"Validation {val_metric}")
+    vectorizer = TextVectorizer(options=config.vectorizer, load=True)
 
-    console.log(f"Saving model to {output}")
-    save(model.state_dict(), output)
-
+    # Predict on the test set
     predictions: list[Tensor] = []
     for tweet in track(
-        testset.datas, description="Predicting", total=len(testset.datas)
+        testset.datas, description="Predicting with model", total=len(testset.datas)
     ):
-        predictions.append(predict(model, vectorizer, tweet.tweet))
+        predictions.append(predict(model_file, vectorizer=vectorizer, text=tweet.tweet))
 
-    with open(output + ".test", "w") as file:
+    # Save the predictions
+    with open(output_path + ".test", "w") as file:
         writer = csv.writer(file)
 
         writer.writerow(["tweet", "prediction"])
 
         for idx, prediction in track(
             enumerate(predictions),
-            description="Saving predictions",
+            description="Saving predictions to file",
             total=len(predictions),
         ):
             writer.writerow(
@@ -137,10 +148,37 @@ def train(
 
 
 @app.command()
-def check_balance(
-    train: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
+def vectorize(
+    # Files
+    train_file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
+    # Hydra options
+    overrides: Optional[List[str]] = typer.Argument(None),
 ):
-    trains = load(train)
+    # Load the configuration
+    config: Config = _compose("./", "model.yaml", overrides)
+
+    # Create a vectorizer
+    vectorizer = TextVectorizer(options=config.vectorizer, load=False)
+
+    # Load the train set
+    trains = read(train_file)
+    trainset = TrainDataSet(vectorizer=vectorizer)
+    for train in trains:
+        trainset.datas = append(trainset.datas, TrainData(**train))
+
+    # Fit the vectorizer
+    vectorizer.fit([tweet.tweet for tweet in trainset.datas], save=True)
+    console.log(
+        f"Dictionnary saved to {config.vectorizer.dictionnary_path} with size {len(vectorizer.vocabulary)}"
+    )
+
+
+@app.command()
+def check(
+    # Files
+    train_file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
+):
+    trains = read(train_file)
     trainset = TrainDataSet(vectorizer=None)
     for train in trains:
         trainset.datas = append(trainset.datas, TrainData(**train))

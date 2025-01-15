@@ -7,7 +7,7 @@ from ast import literal_eval
 from rich.progress import track
 
 
-def load(
+def read(
     file: io.TextIOWrapper,
 ):
     for row in track(csv.DictReader(file), description="Loading data"):

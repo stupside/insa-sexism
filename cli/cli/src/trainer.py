@@ -29,6 +29,8 @@ class TrainOptions:
 
 def fit(model: Model, options: TrainOptions, dataset: TrainDataSet):
 
+    torch.random.manual_seed(options.seed)
+
     generator = torch.Generator().manual_seed(options.seed)
 
     trainset_size = int(options.train_val_split * len(dataset))
@@ -47,6 +49,50 @@ def fit(model: Model, options: TrainOptions, dataset: TrainDataSet):
         num_workers=options.num_workers,
     )
 
+    # Simple BCE loss without weights for binary classification
+    criterion = nn.BCELoss()
+
+    # Adam optimizer with weight decay for regularization and learning rate
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=options.learn_rate, weight_decay=options.weight_decay
+    )
+
+    train_metrics = model.get_new_metric()
+
+    # Set model to training mode
+    model.train(True)
+
+    X: torch.Tensor
+    y: torch.Tensor
+
+    print("Training phase")
+
+    for epoch in range(options.num_epochs):
+        # Training phase
+        train_metrics.reset()
+
+        for X, y in train_loader:
+
+            X, y = X.to(model.device), y.to(model.device)
+
+            # Forward pass
+            y_pred = model.forward(X)
+            loss = criterion.forward(y_pred.squeeze(), y.float())
+
+            # Backward pass
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            with torch.no_grad():
+                y_pred_classes = (y_pred.squeeze() >= 0.5).long()
+                train_metrics.update(y_pred_classes, y)
+
+        print(f"Epoch {epoch + 1}/{options.num_epochs} - {train_metrics.compute()}")
+
+    # Set model to evaluation mode
+    model.train(False)
+
     val_loader = DataLoader(
         validation_set,
         batch_size=options.batch_size,
@@ -56,49 +102,21 @@ def fit(model: Model, options: TrainOptions, dataset: TrainDataSet):
         generator=generator,
     )
 
-    # Simple BCE loss without weights for binary classification
-    criterion = nn.BCELoss()
+    val_metrics = model.get_new_metric()
 
-    optimizer = torch.optim.Adam(
-        model.parameters(), lr=options.learn_rate, weight_decay=options.weight_decay
-    )
+    print("Validation phase")
 
-    val_metric = model.get_new_metric()
-    train_metric = model.get_new_metric()
+    for X, y in val_loader:
+        X, y = X.to(model.device), y.to(model.device)
 
-    for epoch in range(options.num_epochs):
-        # Training phase
-        model.train(True)
-        train_metric.reset()
+        # Forward pass
+        y_pred = model.forward(X)
+        y_pred_classes = (y_pred.squeeze() >= 0.5).long()
 
-        for _, (X, y) in enumerate(train_loader):
-            X, y = X.to(model.device), y.to(model.device)
+        # Update validation metric
+        val_metrics.update(y_pred_classes, y)
 
-            y_pred = model.forward(X)
-            loss = criterion.forward(y_pred.squeeze(), y.float())
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            with torch.no_grad():
-                y_pred_classes = (y_pred.squeeze() >= 0.5).long()
-                train_metric.update(y_pred_classes, y)
-
-        # Validation phase
-        model.train(False)
-        val_metric.reset()
-
-        with torch.no_grad():
-            for X, y in val_loader:
-                X, y = X.to(model.device), y.to(model.device)
-                y_pred = model.forward(X)
-                y_pred_classes = (y_pred.squeeze() >= 0.5).long()
-                val_metric.update(y_pred_classes, y)
-
-        yield epoch, train_metric.compute(), val_metric.compute()
-
-    model.train(False)
+    return train_metrics.compute(), val_metrics.compute()
 
 
 def predict(model: Model, vectorizer: TextVectorizer, text: str):

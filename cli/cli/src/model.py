@@ -7,12 +7,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class ModelOptions:
-    input_dim: int
     output_dim: int
     layer_dims: list[int]
     dropout_rate: float
-    vocab_size: int  # Added for embedding
-    embedding_dim: int  # Added for embedding
+    embedding_dim: int
 
     def __init__(
         self,
@@ -25,14 +23,14 @@ class Model(nn.Module):
 
     device: torch.device
 
-    def __init__(self, device: torch.device, options: ModelOptions):
+    def __init__(self, device: torch.device, vocab_size: int, options: ModelOptions):
         super(Model, self).__init__()
 
         self.device = device
 
         # Add embedding layer
         self.embedding = nn.Embedding(
-            num_embeddings=options.vocab_size, embedding_dim=options.embedding_dim
+            num_embeddings=vocab_size, embedding_dim=options.embedding_dim
         )
 
         self.seq = nn.Sequential()
@@ -79,8 +77,8 @@ class Model(nn.Module):
         return Metric(device=device)
 
     @staticmethod
-    def get(options: ModelOptions) -> "Model":
+    def get(vocab_size: int, options: ModelOptions) -> "Model":
 
-        classifier = Model(device=device, options=options)
+        classifier = Model(device=device, vocab_size=vocab_size, options=options)
 
         return classifier

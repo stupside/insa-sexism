@@ -1,11 +1,32 @@
+.PHONY: install clean train test vectorize check
+
+clean:
+	rm -rf out
+
+vectorize:
+	sxm vectorize \
+		--train-file ../cli-data/train.csv
+
 train:
-	sxm train --train="../cli-data/train.csv" --test="../cli-data/test.csv" --output="./out/model.pt"
+	sxm train \
+		--train-file ../cli-data/train.csv \
+		--output-file ./out/model
 
-predict:
-	sxm predict --model="./out/model.pt" --test="../cli-data/test.csv" --output="./out/model.predictions.csv"
+test:
+	sxm test \
+		--test-file ../cli-data/test.csv \
+		--model-file ./out/model \
+		--output-path ./out/model.test
 
-check-balance:
-	sxm check-balance --train="../cli-data/train.csv"
+check:
+	sxm check \
+		--train-file data/train.csv
+
+all:
+	make clean
+	make vectorize
+	make train
+	make test
 
 venv-setup:
 	poetry env use 3.12

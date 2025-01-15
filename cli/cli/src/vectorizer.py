@@ -1,14 +1,30 @@
+import csv
 import torch
+
 from collections import Counter
+
 from .clean import clean_text
 
 
-class TextVectorizer:
-    def __init__(self, max_length: int):
-        self.vocabulary = {"<PAD>": 0, "<UNK>": 1}
-        self.max_length = max_length
+class TextVectorizerOptions:
+    max_length: int
+    dictionnary_path: str
 
-    def fit(self, texts: list[str]):
+
+class TextVectorizer:
+
+    options: TextVectorizerOptions
+    vocabulary: dict[str, int]
+
+    def __init__(self, options: TextVectorizerOptions, load: bool = False):
+        self.options = options
+        if load:  # Load csv file and create vocabulary with csv library
+            file = csv.reader(open(self.options.dictionnary_path, "r"))
+            self.vocabulary = {word: int(idx) for idx, word in file}
+        else:
+            self.vocabulary = {"<PAD>": 0, "<UNK>": 1}
+
+    def fit(self, texts: list[str], save: bool = False):
         # Clean and tokenize all texts
         word_counts = Counter()
         for text in texts:
@@ -21,6 +37,12 @@ class TextVectorizer:
             if word not in self.vocabulary:
                 self.vocabulary[word] = len(self.vocabulary)
 
+        if save:
+            with open(self.options.dictionnary_path, "w") as file:
+                writer = csv.writer(file)
+                for word, idx in self.vocabulary.items():
+                    writer.writerow([idx, word])
+
     def vectorize(self, text: str) -> torch.Tensor:
         text = clean_text(text)
         words = text.split()
@@ -28,13 +50,13 @@ class TextVectorizer:
         # Convert to indices with truncation and padding
         indices = [
             self.vocabulary.get(word, self.vocabulary["<UNK>"])
-            for word in words[: self.max_length]
+            for word in words[: self.options.max_length]
         ]
 
         # Pad if necessary
-        if len(indices) < self.max_length:
+        if len(indices) < self.options.max_length:
             indices.extend(
-                [self.vocabulary["<PAD>"]] * (self.max_length - len(indices))
+                [self.vocabulary["<PAD>"]] * (self.options.max_length - len(indices))
             )
 
-        return torch.tensor(indices[: self.max_length], dtype=torch.long)
+        return torch.tensor(indices[: self.options.max_length], dtype=torch.long)
