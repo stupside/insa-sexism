@@ -87,7 +87,9 @@ def train(
     console.log(f"Validation metrics: {val_metrics}")
 
     # Save the model
-    save(model.state_dict(), output_file)
+    with open(output_file, "wb") as file:
+        save(model.state_dict(), file)
+
     console.log(f"Model saved to {output_file}")
 
 
@@ -95,7 +97,7 @@ def train(
 def test(
     # Files
     test_file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
-    model_file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
+    model_file: Annotated[str, typer.Option(help="Path to the model file")],
     # Output file path
     output_path: Annotated[str, typer.Option(help="File to save the predictions to")],
     # Hydra options
@@ -105,13 +107,16 @@ def test(
     config: Config = _compose("./", "model.yaml", overrides)
 
     # Create a vectorizer
-    vectorizer = TextVectorizer(options=config.vectorizer)
+    vectorizer = TextVectorizer(options=config.vectorizer, load=True)
     console.log(f"Vectorizer loaded with {len(vectorizer.vocabulary)} words")
 
     # Load the model
     model = Model.get(vocab_size=len(vectorizer.vocabulary), options=config.model)
     # Load the model weights
-    model.load_state_dict(load(model_file))
+    model.load_state_dict(state_dict=load(model_file, weights_only=True))
+
+    # Set the model to evaluation mode
+    model.eval()
 
     # Load the datasets
     tests = read(test_file)
@@ -119,17 +124,15 @@ def test(
     for test in tests:
         testset.datas = append(testset.datas, TestData(**test))
 
-    vectorizer = TextVectorizer(options=config.vectorizer, load=True)
-
     # Predict on the test set
     predictions: list[Tensor] = []
     for tweet in track(
         testset.datas, description="Predicting with model", total=len(testset.datas)
     ):
-        predictions.append(predict(model_file, vectorizer=vectorizer, text=tweet.tweet))
+        predictions.append(predict(model, vectorizer=vectorizer, text=tweet.tweet))
 
     # Save the predictions
-    with open(output_path + ".test", "w") as file:
+    with open(output_path, "w") as file:
         writer = csv.writer(file)
 
         writer.writerow(["tweet", "prediction"])

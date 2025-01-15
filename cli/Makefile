@@ -10,12 +10,12 @@ vectorize:
 train:
 	sxm train \
 		--train-file ../cli-data/train.csv \
-		--output-file ./out/model
+		--output-file ./out/model.pt
 
 test:
 	sxm test \
 		--test-file ../cli-data/test.csv \
-		--model-file ./out/model \
+		--model-file ./out/model.pt \
 		--output-path ./out/model.test
 
 check:
