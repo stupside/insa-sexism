@@ -1,7 +1,7 @@
 .PHONY: install clean train test vectorize check
 
 clean:
-	rm -rf out
+	rm -rf ./out/*
 
 vectorize:
 	sxm vectorize \
@@ -20,10 +20,9 @@ test:
 
 check:
 	sxm check \
-		--train-file data/train.csv
+		--train-file ../cli-data/train.csv \
 
 all:
-	make clean
 	make vectorize
 	make train
 	make test
