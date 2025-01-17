@@ -43,10 +43,10 @@ class TrainDataSet(Dataset):
             "REPORTED": 0.7,
         }
 
-        # Initialize demographic weights (optional tuning based on analysis)
-        demographic_weights = {
-            "gender": {"F": 1.2, "M": 0.8},  # Slight bias towards female annotators
-        }
+        # # Initialize demographic weights (optional tuning based on analysis)
+        # demographic_weights = {
+        #     "gender": {"F": 1.2, "M": 0.8},  # Slight bias towards female annotators
+        # }
 
         total_score = 0
         valid_votes = 0
@@ -56,7 +56,7 @@ class TrainDataSet(Dataset):
             task1_label = data.labels_task1[idx]
             task2_label = data.labels_task2[idx]
 
-            gender = data.gender_annotators[idx]
+            # gender = data.gender_annotators[idx]
 
             # Skip invalid or incomplete annotations
             if task1_label not in ["YES", "NO"] or task2_label not in sexism_weights:
@@ -72,8 +72,8 @@ class TrainDataSet(Dataset):
                 vote_score = -0.5  # Slight penalty for NO votes
 
             # Apply demographic adjustments (if available)
-            if gender in demographic_weights["gender"]:
-                vote_score *= demographic_weights["gender"][gender]
+            # if gender in demographic_weights["gender"]:
+            #     vote_score *= demographic_weights["gender"][gender]
 
             total_score += vote_score
 

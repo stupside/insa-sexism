@@ -25,6 +25,7 @@ from .src.sets.train import TrainDataSet
 from .src.types.test import TestData
 from .src.types.train import TrainData
 
+from .src.aug import augment
 from .src.model import Model, ModelOptions
 from .src.trainer import fit, predict, TrainOptions
 
@@ -77,7 +78,14 @@ def train(
     trains = read(train_file)
     trainset = TrainDataSet(vectorizer=vectorizer)
     for train in trains:
-        trainset.datas = append(trainset.datas, TrainData(**train))
+        traindata = TrainData(**train)
+
+        for sentence in augment(traindata.tweet.split()):
+            data = TrainData(**train)
+            data.tweet = " ".join(sentence)
+            trainset.datas = append(trainset.datas, data)
+
+        trainset.datas = append(trainset.datas, traindata)
 
     # Train the model
     train_metrics, val_metrics = fit(model, dataset=trainset, options=config.train)
@@ -167,7 +175,14 @@ def vectorize(
     trains = read(train_file)
     trainset = TrainDataSet(vectorizer=vectorizer)
     for train in trains:
-        trainset.datas = append(trainset.datas, TrainData(**train))
+        traindata = TrainData(**train)
+
+        for sentence in augment(traindata.tweet.split()):
+            data = TrainData(**train)
+            data.tweet = " ".join(sentence)
+            trainset.datas = append(trainset.datas, data)
+
+        trainset.datas = append(trainset.datas, traindata)
 
     # Fit the vectorizer
     vectorizer.fit([tweet.tweet for tweet in trainset.datas], save=True)
@@ -196,3 +211,13 @@ def check(
             num_yes += 1
 
     console.log(f"Sexist: {num_yes}, Nonsexist: {num_no} ({num_yes / num_no:.2f})")
+
+    # Sentiment analysis
+    from nltk import download
+    from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+    download("vader_lexicon")
+    for data in trainset.datas:
+        sentiment = SentimentIntensityAnalyzer().polarity_scores(data.tweet)
+
+        console.log(f"{data.tweet} -> {sentiment}")
