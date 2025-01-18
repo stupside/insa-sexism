@@ -3,7 +3,15 @@ import torch.nn as nn
 
 from .metric import Metric
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+device: torch.device
+
+# if torch.mps.is_available():
+#     device = torch.device("mps")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("cpu")
 
 
 class ModelOptions:
@@ -81,4 +89,4 @@ class Model(nn.Module):
 
         classifier = Model(device=device, vocab_size=vocab_size, options=options)
 
-        return classifier
+        return classifier.to(device)

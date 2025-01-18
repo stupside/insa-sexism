@@ -3,7 +3,7 @@ from .model import Model
 import torch
 import torch.nn as nn
 
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torch.utils.data import random_split
 
 from cli.src.sets.train import TrainDataSet
@@ -27,10 +27,7 @@ class TrainOptions:
         self.__dict__.update(kwargs)
 
 
-def fit(model: Model, options: TrainOptions, dataset: TrainDataSet):
-
-    torch.random.manual_seed(options.seed)
-
+def split(options: TrainOptions, dataset: TrainDataSet):
     generator = torch.Generator().manual_seed(options.seed)
 
     trainset_size = int(options.train_val_split * len(dataset))
@@ -41,8 +38,13 @@ def fit(model: Model, options: TrainOptions, dataset: TrainDataSet):
         generator=generator,
     )
 
-    train_loader = DataLoader(
-        train_set,
+    return train_set, validation_set
+
+
+def fit(model: Model, options: TrainOptions, subset: Subset):
+
+    loader = DataLoader(
+        subset,
         batch_size=options.batch_size,
         shuffle=True,
         pin_memory=True,
@@ -65,13 +67,10 @@ def fit(model: Model, options: TrainOptions, dataset: TrainDataSet):
     X: torch.Tensor
     y: torch.Tensor
 
-    print("Training phase")
-
     for epoch in range(options.num_epochs):
-        # Training phase
         train_metrics.reset()
 
-        for X, y in train_loader:
+        for X, y in loader:
 
             X, y = X.to(model.device), y.to(model.device)
 
@@ -88,13 +87,16 @@ def fit(model: Model, options: TrainOptions, dataset: TrainDataSet):
                 y_pred_classes = (y_pred.squeeze() >= 0.5).long()
                 train_metrics.update(y_pred_classes, y)
 
-        print(f"Epoch {epoch + 1}/{options.num_epochs} - {train_metrics.compute()}")
+        yield epoch, train_metrics.compute()
 
-    # Set model to evaluation mode
+
+def validate(model: Model, options: TrainOptions, subset: Subset):
     model.train(False)
 
-    val_loader = DataLoader(
-        validation_set,
+    generator = torch.Generator().manual_seed(options.seed)
+
+    loader = DataLoader(
+        subset,
         batch_size=options.batch_size,
         shuffle=False,
         pin_memory=True,
@@ -102,11 +104,12 @@ def fit(model: Model, options: TrainOptions, dataset: TrainDataSet):
         generator=generator,
     )
 
-    val_metrics = model.get_new_metric()
+    metrics = model.get_new_metric()
 
-    print("Validation phase")
+    X: torch.Tensor
+    y: torch.Tensor
 
-    for X, y in val_loader:
+    for X, y in loader:
         X, y = X.to(model.device), y.to(model.device)
 
         # Forward pass
@@ -114,9 +117,9 @@ def fit(model: Model, options: TrainOptions, dataset: TrainDataSet):
         y_pred_classes = (y_pred.squeeze() >= 0.5).long()
 
         # Update validation metric
-        val_metrics.update(y_pred_classes, y)
+        metrics.update(y_pred_classes, y)
 
-    return train_metrics.compute(), val_metrics.compute()
+        yield metrics.compute()
 
 
 def predict(model: Model, vectorizer: TextVectorizer, text: str):

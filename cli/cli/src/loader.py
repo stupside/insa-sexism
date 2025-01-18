@@ -11,7 +11,6 @@ def read(
     file: io.TextIOWrapper,
 ):
     for row in track(csv.DictReader(file), description="Loading data"):
-
         for key, value in row.items():
             if value.startswith("[") and value.endswith("]"):
                 try:

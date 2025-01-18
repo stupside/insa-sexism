@@ -25,9 +25,9 @@ from .src.sets.train import TrainDataSet
 from .src.types.test import TestData
 from .src.types.train import TrainData
 
-from .src.aug import augment
+from .src.clean import clean_text
 from .src.model import Model, ModelOptions
-from .src.trainer import fit, predict, TrainOptions
+from .src.trainer import fit, predict, split, validate, TrainOptions
 
 
 app = typer.Typer(
@@ -76,23 +76,31 @@ def train(
 
     # Load the train set
     trains = read(train_file)
+
+    # Create the train set
     trainset = TrainDataSet(vectorizer=vectorizer)
     for train in trains:
         traindata = TrainData(**train)
-
-        for sentence in augment(traindata.tweet.split()):
-            data = TrainData(**train)
-            data.tweet = " ".join(sentence)
-            trainset.datas = append(trainset.datas, data)
-
         trainset.datas = append(trainset.datas, traindata)
 
-    # Train the model
-    train_metrics, val_metrics = fit(model, dataset=trainset, options=config.train)
+    # Clean the train set
+    for data in track(trainset.datas, description="Cleaning the train set"):
+        data.tweet = clean_text(data.tweet)
 
-    # Print the metrics
-    console.log(f"Train metrics: {train_metrics}")
-    console.log(f"Validation metrics: {val_metrics}")
+    trainsubset, valsubset = split(options=config.train, dataset=trainset)
+
+    # Train the model
+    fitting = fit(model, subset=trainsubset, options=config.train)
+    for epoch, metric in track(
+        fitting, description="Training the model", total=config.train.num_epochs
+    ):
+        console.log(f"Epoch {epoch}: {metric}")
+
+    validating = validate(model, subset=valsubset, options=config.train)
+    for metric in track(
+        validating, description="Validating the model", total=len(valsubset)
+    ):
+        console.log(f"Validation metrics: {metric}")
 
     # Save the model
     with open(output_file, "wb") as file:
@@ -128,14 +136,24 @@ def test(
 
     # Load the datasets
     tests = read(test_file)
+
+    # Create the test set
     testset = TestDataSet(vectorizer=vectorizer)
     for test in tests:
         testset.datas = append(testset.datas, TestData(**test))
 
+    # Create a cleaned test set only for predictions
+    cleaned_testset = TestDataSet(vectorizer=vectorizer)
+    cleaned_testset.datas = testset.datas.copy()
+    for test in track(cleaned_testset.datas, description="Cleaning the test set"):
+        test.tweet = clean_text(test.tweet)
+
     # Predict on the test set
     predictions: list[Tensor] = []
     for tweet in track(
-        testset.datas, description="Predicting with model", total=len(testset.datas)
+        cleaned_testset.datas,
+        description="Predicting with model",
+        total=len(cleaned_testset.datas),
     ):
         predictions.append(predict(model, vectorizer=vectorizer, text=tweet.tweet))
 
@@ -146,14 +164,15 @@ def test(
         writer.writerow(["tweet", "prediction"])
 
         for idx, prediction in track(
-            enumerate(predictions),
+            predictions,
             description="Saving predictions to file",
             total=len(predictions),
         ):
+            data = testset.datas[idx]
             writer.writerow(
                 [
-                    testset.datas[idx].tweet,
-                    "YES" if prediction == 1 else "NO",
+                    data.tweet,
+                    prediction.item(),
                 ]
             )
 
@@ -173,16 +192,32 @@ def vectorize(
 
     # Load the train set
     trains = read(train_file)
+
+    # Create the train set
     trainset = TrainDataSet(vectorizer=vectorizer)
     for train in trains:
         traindata = TrainData(**train)
-
-        for sentence in augment(traindata.tweet.split()):
-            data = TrainData(**train)
-            data.tweet = " ".join(sentence)
-            trainset.datas = append(trainset.datas, data)
-
         trainset.datas = append(trainset.datas, traindata)
+
+    # Clean the train set
+    for data in track(trainset.datas, description="Cleaning the train set"):
+        data.tweet = clean_text(data.tweet)
+
+    # Augment the train set
+    # augmented_trainset = TrainDataSet(vectorizer=vectorizer)
+    # for data in track(
+    #     trainset.datas,
+    #     description="Augmenting the train set",
+    #     total=len(trainset.datas),
+    # ):
+    #     augmented_data = augment_with_synonyms(
+    #         tokens=data.tweet.split(), num_replacements=2, max_augmented=5
+    #     )
+    #     for augmented in augmented_data:
+    #         augmented_trainset.datas = append(
+    #             augmented_trainset.datas, TrainData(tweet=" ".join(augmented))
+    #         )
+    #         print(f"Augmented: {' '.join(augmented)}")
 
     # Fit the vectorizer
     vectorizer.fit([tweet.tweet for tweet in trainset.datas], save=True)
@@ -198,12 +233,12 @@ def check(
 ):
     trains = read(train_file)
     trainset = TrainDataSet(vectorizer=None)
-    for train in trains:
+    for train in track(trains, description="Loading the train set"):
         trainset.datas = append(trainset.datas, TrainData(**train))
 
     num_no = 0
     num_yes = 0
-    for _, data in enumerate(trainset.datas):
+    for _, data in trainset.datas:
         sexist = trainset.check_is_sexist(data)
         if not sexist:
             num_no += 1
@@ -211,13 +246,3 @@ def check(
             num_yes += 1
 
     console.log(f"Sexist: {num_yes}, Nonsexist: {num_no} ({num_yes / num_no:.2f})")
-
-    # Sentiment analysis
-    from nltk import download
-    from nltk.sentiment.vader import SentimentIntensityAnalyzer
-
-    download("vader_lexicon")
-    for data in trainset.datas:
-        sentiment = SentimentIntensityAnalyzer().polarity_scores(data.tweet)
-
-        console.log(f"{data.tweet} -> {sentiment}")

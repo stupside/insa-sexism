@@ -9,6 +9,8 @@ from cli.src.types.train import TrainData
 
 from cli.src.vectorizer import TextVectorizer
 
+from cli.src.model import device
+
 
 class TrainDataSet(Dataset):
     datas: list[TrainData] = []
@@ -29,7 +31,7 @@ class TrainDataSet(Dataset):
         sexist = self.check_is_sexist(data)
 
         tweet = self.vectorizer.vectorize(tweet)
-        sexist = torch.tensor(sexist, dtype=torch.long)
+        sexist = torch.tensor(sexist).to(torch.long).to(device)
 
         return tweet, sexist
 

@@ -3,7 +3,7 @@ import torch
 
 from collections import Counter
 
-from .clean import clean_text
+from .model import device
 
 
 class TextVectorizerOptions:
@@ -28,7 +28,6 @@ class TextVectorizer:
         # Clean and tokenize all texts
         word_counts = Counter()
         for text in texts:
-            text = clean_text(text)
             words = text.split()
             word_counts.update(words)
 
@@ -44,7 +43,6 @@ class TextVectorizer:
                     writer.writerow([idx, word])
 
     def vectorize(self, text: str) -> torch.Tensor:
-        text = clean_text(text)
         words = text.split()
 
         # Convert to indices with truncation and padding
@@ -59,4 +57,8 @@ class TextVectorizer:
                 [self.vocabulary["<PAD>"]] * (self.options.max_length - len(indices))
             )
 
-        return torch.tensor(indices[: self.options.max_length], dtype=torch.long)
+        return (
+            torch.tensor(indices[: self.options.max_length])
+            .to(torch.long)
+            .to(device=device)
+        )
