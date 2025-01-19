@@ -38,7 +38,7 @@ class TextVectorizer:
 
         if save:
             with open(self.options.dictionnary_path, "w") as file:
-                writer = csv.writer(file)
+                writer = csv.writer(file, lineterminator="\n")
                 for word, idx in self.vocabulary.items():
                     writer.writerow([idx, word])
 
