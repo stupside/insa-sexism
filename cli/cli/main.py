@@ -29,6 +29,7 @@ from .src.clean import clean_text
 from .src.model import Model, ModelOptions
 from .src.trainer import fit, predict, split, validate, TrainOptions
 
+from cli.src.tuning import tune_hyperparams
 
 app = typer.Typer(
     help="This is a CLI tool detect sexism in text.", no_args_is_help=True
@@ -227,22 +228,30 @@ def vectorize(
 
 
 @app.command()
-def check(
+def tune(
     # Files
     train_file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
+    # Hydra options
+    overrides: Optional[List[str]] = typer.Argument(None),
 ):
+    config: Config = _compose("./", "model.yaml", overrides)
+
+    # Create a vectorizer
+    vectorizer = TextVectorizer(options=config.vectorizer, load=True)
+
+    # Load the train set
     trains = read(train_file)
-    trainset = TrainDataSet(vectorizer=None)
-    for train in track(trains, description="Loading the train set"):
-        trainset.datas = append(trainset.datas, TrainData(**train))
 
-    num_no = 0
-    num_yes = 0
-    for _, data in trainset.datas:
-        sexist = trainset.check_is_sexist(data)
-        if not sexist:
-            num_no += 1
-        else:
-            num_yes += 1
+    # Create the train set
+    trainset = TrainDataSet(vectorizer=vectorizer)
+    for train in trains:
+        traindata = TrainData(**train)
+        trainset.datas = append(trainset.datas, traindata)
 
-    console.log(f"Sexist: {num_yes}, Nonsexist: {num_no} ({num_yes / num_no:.2f})")
+    # Clean the train set
+    for data in track(trainset.datas, description="Cleaning the train set"):
+        data.tweet = clean_text(data.tweet)
+
+    result = tune_hyperparams(trials=100, vectorizer=vectorizer, trainset=trainset)
+
+    console.log(f"Best hyperparameters: {result}")

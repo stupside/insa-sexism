@@ -48,7 +48,9 @@ def fit(model: Model, options: TrainOptions, subset: Subset):
         batch_size=options.batch_size,
         shuffle=True,
         pin_memory=True,
+        persistent_workers=True,
         num_workers=options.num_workers,
+        prefetch_factor=options.num_workers,
     )
 
     # Simple BCE loss without weights for binary classification
@@ -102,6 +104,8 @@ def validate(model: Model, options: TrainOptions, subset: Subset):
         pin_memory=True,
         num_workers=options.num_workers,
         generator=generator,
+        persistent_workers=True,
+        prefetch_factor=options.num_workers,
     )
 
     metrics = model.get_new_metric()

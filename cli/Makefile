@@ -12,6 +12,10 @@ train:
 		--train-file ../cli-data/train.csv \
 		--output-file ./out/model.pt
 
+tune:
+	sxm tune \
+		--train-file ../cli-data/train.csv
+
 test:
 	sxm test \
 		--test-file ../cli-data/test.csv \

@@ -1,17 +1,73 @@
 from nltk import download
-from nltk.corpus import words
-from nltk.corpus import stopwords
+from nltk.corpus import words, stopwords
 from nltk.tokenize import word_tokenize
 from nltk.metrics.distance import edit_distance
-from nltk.stem import WordNetLemmatizer, LancasterStemmer
-
-
+from nltk.stem import WordNetLemmatizer
 import re
-
 import emoji
+from multiprocessing import Lock
+import os
+
+# Global initialization flag and lock
+_nltk_initialized = False
+_init_lock = Lock()
 
 
-@staticmethod
+def initialize_nltk():
+    """Initialize NLTK resources once at startup"""
+    global _nltk_initialized
+
+    # Use lock to prevent multiple processes from initializing simultaneously
+    with _init_lock:
+        if not _nltk_initialized:
+            if "NLTK_INITIALIZED" not in os.environ:
+                # Only download in main process
+                download("words")
+                download("stopwords")
+                download("punkt")
+                download("wordnet")
+                os.environ["NLTK_INITIALIZED"] = "1"
+            _nltk_initialized = True
+
+
+# Initialize in main process
+initialize_nltk()
+
+
+# Lazy loading of resources
+def get_resources():
+    """Get NLTK resources in a lazy and process-safe way"""
+    initialize_nltk()  # Will only download if needed
+    return {
+        "correct_words": words.words(),
+        "stop_words": set(stopwords.words("english")),
+        "lemmatizer": WordNetLemmatizer(),
+        "word_dict": _build_word_dict(words.words()),
+    }
+
+
+def _build_word_dict(correct_words):
+    word_dict = {}
+    for w in correct_words:
+        first_letter = w[0] if w else ""
+        if first_letter not in word_dict:
+            word_dict[first_letter] = []
+        word_dict[first_letter].append(w)
+    return word_dict
+
+
+# Cache for resources in each process
+_process_resources = None
+
+
+def get_process_resources():
+    """Get or initialize resources for current process"""
+    global _process_resources
+    if _process_resources is None:
+        _process_resources = get_resources()
+    return _process_resources
+
+
 def remove_hours(text: str) -> str:
     # Regex pattern to match various time formats
     time_patterns = [
@@ -30,22 +86,12 @@ def remove_hours(text: str) -> str:
     return " ".join(cleaned_text.split())  # Remove extra spaces
 
 
-download("words")
-correct_words = words.words()
-
-# Add this after the correct_words initialization
-word_dict: dict[str, list[str]] = {}
-for w in correct_words:
-    first_letter = w[0] if w else ""
-    if first_letter not in word_dict:
-        word_dict[first_letter] = []
-    word_dict[first_letter].append(w)
-
-
-@staticmethod
 def correct_word(word: str) -> str:
     if not word:
         return word
+
+    resources = get_process_resources()
+    word_dict = resources["word_dict"]
 
     first_letter = word[0]
     if first_letter not in word_dict:
@@ -67,16 +113,10 @@ def correct_word(word: str) -> str:
         return word
 
 
-download("stopwords")
-
-stop_words = set(stopwords.words("english"))
-
-stemmer = LancasterStemmer()
-lemmatizer = WordNetLemmatizer()
-
-
-@staticmethod
 def clean_text(text: str):
+    resources = get_process_resources()
+    stop_words = resources["stop_words"]
+    lemmatizer = resources["lemmatizer"]
 
     # Convert emojis to text
     text = emoji.demojize(text)

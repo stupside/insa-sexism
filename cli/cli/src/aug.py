@@ -1,9 +1,9 @@
 import random
-
-from nltk import download
 from nltk.corpus import wordnet
+from .clean import initialize_nltk
 
-download("wordnet")
+# Initialize NLTK resources
+initialize_nltk()
 
 
 def augment_with_synonyms(

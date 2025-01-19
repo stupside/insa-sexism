@@ -1,5 +1,8 @@
 import torch
 import torch.nn as nn
+import logging
+import os
+from multiprocessing import current_process
 
 from .metric import Metric
 
@@ -12,6 +15,17 @@ if torch.cuda.is_available():
     device = torch.device("cuda")
 else:
     device = torch.device("cpu")
+
+# Add logging configuration
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+# Add worker identification
+def log_worker_info():
+    worker = current_process().name
+    pid = os.getpid()
+    logger.info(f"Worker {worker} (PID: {pid}) initialized")
 
 
 class ModelOptions:
@@ -33,6 +47,7 @@ class Model(nn.Module):
 
     def __init__(self, device: torch.device, vocab_size: int, options: ModelOptions):
         super(Model, self).__init__()
+        log_worker_info()  # Log when model is created in worker
 
         self.device = device
 
@@ -44,7 +59,7 @@ class Model(nn.Module):
         self.seq = nn.Sequential()
 
         # Modify first layer to use embedding dimension
-        self.seq.add_module("norm1d", nn.BatchNorm1d(options.embedding_dim))
+        # self.seq.add_module("norm1d", nn.BatchNorm1d(options.embedding_dim))
 
         prev_dim = options.embedding_dim
 
