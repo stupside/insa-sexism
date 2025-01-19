@@ -3,3 +3,5 @@
 text.file
 cli/out/model.dict
 cli/out/model.pt
+cli/out/model.dict
+cli/out/model.pt
