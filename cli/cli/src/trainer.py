@@ -47,8 +47,8 @@ def fit(model: Model, options: TrainOptions, subset: Subset):
         subset,
         batch_size=options.batch_size,
         shuffle=True,
-        pin_memory=True,
         persistent_workers=True,
+        pin_memory=model.device.type != "cuda",
         num_workers=options.num_workers,
         prefetch_factor=options.num_workers,
     )
@@ -101,7 +101,7 @@ def validate(model: Model, options: TrainOptions, subset: Subset):
         subset,
         batch_size=options.batch_size,
         shuffle=False,
-        pin_memory=True,
+        pin_memory=model.device.type != "cuda",
         num_workers=options.num_workers,
         generator=generator,
         persistent_workers=True,
