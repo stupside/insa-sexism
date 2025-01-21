@@ -16,6 +16,8 @@ if torch.cuda.is_available():
 else:
     device = torch.device("cpu")
 
+print(f"Using device: {device}")
+
 # Add logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,12 +46,14 @@ class ModelOptions:
 class Model(nn.Module):
 
     device: torch.device
+    options: ModelOptions
 
     def __init__(self, device: torch.device, vocab_size: int, options: ModelOptions):
         super(Model, self).__init__()
         log_worker_info()  # Log when model is created in worker
 
         self.device = device
+        self.options = options
 
         # Add embedding layer
         self.embedding = nn.Embedding(
@@ -80,20 +84,20 @@ class Model(nn.Module):
         # Add output layer
         self.seq.add_module("linear", nn.Linear(prev_dim, options.output_dim))
 
-        # Add sigmoid activation for binary classification
-        if options.output_dim == 1:
-            self.seq.add_module("sigmoid", nn.Sigmoid())
-        else:
-            self.seq.add_module("softmax", nn.Softmax(dim=-options.output_dim))
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Run embedding layer
         x = self.embedding.forward(x)
 
         # Average embeddings
-        x = torch.mean(x, dim=1)
+        embedding = torch.mean(x, dim=1)
 
-        return self.seq.forward(x)
+        logits = self.seq.forward(embedding)
+
+        # Add sigmoid activation for binary classification
+        if self.options.output_dim == 1:
+            return torch.sigmoid(logits)
+        else:
+            return torch.softmax(logits, dim=1)
 
     @staticmethod
     def get_new_metric():

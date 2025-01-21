@@ -1,6 +1,8 @@
 import csv
 import typer
 
+from matplotlib.axes import Axes
+import matplotlib.pyplot as plt
 
 from hydra import compose, initialize
 from typing import List, Optional
@@ -90,18 +92,67 @@ def train(
 
     trainsubset, valsubset = split(options=config.train, dataset=trainset)
 
+    # Setup interactive plotting
+    plt.ion()
+
+    ax1: Axes
+    ax2: Axes
+    _, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+
+    losses: list[float] = []
+    epochs: list[int] = []
+    accuracies: list[float] = []
+
     # Train the model
     fitting = fit(model, subset=trainsubset, options=config.train)
-    for epoch, metric in track(
-        fitting, description="Training the model", total=config.train.num_epochs
-    ):
+    for epoch, metric, loss in fitting:
+        # Update data
+        epochs.append(epoch)
+        losses.append(float(loss.item()))
+        accuracies.append(float(metric.accuracy.item()))
+
+        # Clear and redraw plots
+        ax1.clear()
+        ax2.clear()
+
+        # Plot loss
+        ax1.plot(epochs, losses, "b-")
+        ax1.set_xlabel("Epoch")
+        ax1.set_ylabel("Loss")
+        ax1.set_title("Training Loss")
+        ax1.grid(True)
+
+        # Plot accuracy
+        ax2.plot(epochs, accuracies, "r-")
+        ax2.set_xlabel("Epoch")
+        ax2.set_ylabel("Accuracy")
+        ax2.set_title("Training Accuracy")
+        ax2.grid(True)
+
+        plt.tight_layout()
+        plt.draw()
+        plt.pause(0.1)
+
         console.log(f"Epoch {epoch}: {metric}")
 
+    # Validation phase
+    val_metrics = []
     validating = validate(model, subset=valsubset, options=config.train)
-    for metric in track(
-        validating, description="Validating the model", total=len(valsubset)
-    ):
+    for metric in validating:
+        val_metrics.append(metric)
         console.log(f"Validation metrics: {metric}")
+
+    # Final validation results
+    ax2.axhline(
+        y=val_metrics[-1]["accuracy"],
+        color="g",
+        linestyle="--",
+        label="Validation Accuracy",
+    )
+    ax2.legend()
+
+    plt.ioff()
+    plt.show()
 
     # Save the model
     with open(output_file, "wb") as file:

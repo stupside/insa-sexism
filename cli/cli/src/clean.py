@@ -34,20 +34,37 @@ def initialize_nltk():
 initialize_nltk()
 
 
+class Resources:
+    def __init__(
+        self,
+        correct_words: list[str],
+        stop_words: list[str],
+        lemmatizer: WordNetLemmatizer,
+        word_dict: dict[str, list[str]],
+    ):
+        self.correct_words = correct_words
+        self.stop_words = stop_words
+        self.lemmatizer = lemmatizer
+        self.word_dict = word_dict
+
+
 # Lazy loading of resources
 def get_resources():
     """Get NLTK resources in a lazy and process-safe way"""
     initialize_nltk()  # Will only download if needed
-    return {
-        "correct_words": words.words(),
-        "stop_words": set(stopwords.words("english")),
-        "lemmatizer": WordNetLemmatizer(),
-        "word_dict": _build_word_dict(words.words()),
-    }
+
+    resources = Resources(
+        correct_words=words.words(),
+        stop_words=set(stopwords.words("english")),
+        lemmatizer=WordNetLemmatizer(),
+        word_dict=_build_word_dict(words.words()),
+    )
+
+    return resources
 
 
 def _build_word_dict(correct_words):
-    word_dict = {}
+    word_dict: dict[str, list[str]] = {}
     for w in correct_words:
         first_letter = w[0] if w else ""
         if first_letter not in word_dict:
@@ -57,7 +74,7 @@ def _build_word_dict(correct_words):
 
 
 # Cache for resources in each process
-_process_resources = None
+_process_resources: Resources = None
 
 
 def get_process_resources():
@@ -91,15 +108,16 @@ def correct_word(word: str) -> str:
         return word
 
     resources = get_process_resources()
-    word_dict = resources["word_dict"]
 
     first_letter = word[0]
-    if first_letter not in word_dict:
+    if first_letter not in resources.word_dict:
         return word
 
     # Only consider words with similar length (±1 character)
     word_len = len(word)
-    candidates = [w for w in word_dict[first_letter] if abs(len(w) - word_len) <= 1]
+    candidates = [
+        w for w in resources.word_dict[first_letter] if abs(len(w) - word_len) <= 1
+    ]
 
     # Only compute edit distance for the first 50 candidates
     candidates = candidates[:50]
@@ -115,20 +133,18 @@ def correct_word(word: str) -> str:
 
 def clean_text(text: str):
     resources = get_process_resources()
-    stop_words = resources["stop_words"]
-    lemmatizer = resources["lemmatizer"]
 
     # Convert emojis to text
     text = emoji.demojize(text)
 
     # Remove mentions and hashtags
-    text = re.sub(r"[@#](\w+)", "", text)
+    text = re.sub(r"[@#](\w+)", "<MENTION>", text)
 
     # Lowercase the text
     text = text.lower()
 
     # Remove URLs
-    text = re.sub(r"http\S+|www\S+|https\S+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"http\S+|www\S+|https\S+", "<HTTPURL>", text, flags=re.MULTILINE)
 
     # Remove hours
     text = remove_hours(text)
@@ -152,10 +168,10 @@ def clean_text(text: str):
     tokens = [word for word in tokens if word.isalnum()]
 
     # Stem and lemmatize - do not stem as it is too aggressive
-    tokens = [lemmatizer.lemmatize(word) for word in tokens]
+    tokens = [resources.lemmatizer.lemmatize(word) for word in tokens]
 
     # Remove stopwords
-    tokens = [word for word in tokens if word not in stop_words]
+    tokens = [word for word in tokens if word not in resources.stop_words]
 
     # # Remove short words
     # tokens = [word for word in tokens if len(word) > 2]

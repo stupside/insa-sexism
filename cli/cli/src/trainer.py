@@ -72,6 +72,8 @@ def fit(model: Model, options: TrainOptions, subset: Subset):
     for epoch in range(options.num_epochs):
         train_metrics.reset()
 
+        cum_loss: torch.Tensor = torch.tensor(0.0, device=model.device)
+
         for X, y in loader:
 
             X, y = X.to(model.device), y.to(model.device)
@@ -85,11 +87,14 @@ def fit(model: Model, options: TrainOptions, subset: Subset):
             loss.backward()
             optimizer.step()
 
+            # Update loss
+            cum_loss += loss
+
             with torch.no_grad():
                 y_pred_classes = (y_pred.squeeze() >= 0.5).long()
                 train_metrics.update(y_pred_classes, y)
 
-        yield epoch, train_metrics.compute()
+        yield epoch, train_metrics.compute(), cum_loss / len(loader)
 
 
 def validate(model: Model, options: TrainOptions, subset: Subset):
@@ -128,7 +133,11 @@ def validate(model: Model, options: TrainOptions, subset: Subset):
 
 def predict(model: Model, vectorizer: TextVectorizer, text: str):
     model.eval()
-    with torch.no_grad():
-        vector = vectorizer.vectorize(text)
-        prediction = model.forward(vector.unsqueeze(0))
-        return (prediction.squeeze() >= 0.5).long().item()
+
+    vector = vectorizer.vectorize(text).to(model.device)
+
+    prediction = model.forward(vector)
+
+    classes = prediction.squeeze() >= 0.5
+
+    return classes.long()
