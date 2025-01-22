@@ -20,6 +20,10 @@ class TrainOptions:
     weight_decay: float
     train_val_split: float
 
+    lr_mode: str
+    lr_factor: float
+    lr_patience: int
+
     def __init__(
         self,
         **kwargs,
@@ -53,13 +57,27 @@ def fit(model: Model, options: TrainOptions, subset: Subset):
         prefetch_factor=options.num_workers if options.num_workers > 0 else None,
     )
 
-    # Simple BCE loss without weights for binary classification
+    # Use weighted BCE loss
     criterion = nn.BCELoss()
 
     # Adam optimizer with weight decay for regularization and learning rate
     optimizer = torch.optim.Adam(
         model.parameters(), lr=options.learn_rate, weight_decay=options.weight_decay
     )
+
+    # Add learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode=options.lr_mode,
+        factor=options.lr_factor,
+        patience=options.lr_patience,
+    )
+
+    # Early stopping setup
+    best_loss = float("inf")
+
+    patience = options.lr_patience
+    patience_counter = 0
 
     train_metrics = model.get_new_metric()
 
@@ -84,6 +102,7 @@ def fit(model: Model, options: TrainOptions, subset: Subset):
 
             # Backward pass
             optimizer.zero_grad()
+
             loss.backward()
             optimizer.step()
 
@@ -94,7 +113,22 @@ def fit(model: Model, options: TrainOptions, subset: Subset):
                 y_pred_classes = (y_pred.squeeze() >= 0.5).long()
                 train_metrics.update(y_pred_classes, y)
 
-        yield epoch, train_metrics.compute(), cum_loss / len(loader)
+        cum_loss = cum_loss / len(loader)
+
+        # Update learning rate based on loss
+        scheduler.step(cum_loss)
+
+        # Early stopping check
+        if cum_loss < best_loss:
+            best_loss = cum_loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+
+        if patience_counter >= patience:
+            break
+
+        yield epoch, train_metrics.compute(), cum_loss
 
 
 def validate(model: Model, options: TrainOptions, subset: Subset):

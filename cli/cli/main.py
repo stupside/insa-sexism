@@ -1,8 +1,6 @@
 import csv
 import typer
 
-from matplotlib.axes import Axes
-import matplotlib.pyplot as plt
 
 from hydra import compose, initialize
 from typing import List, Optional
@@ -10,7 +8,7 @@ from omegaconf import DictConfig
 
 
 from numpy import append
-from torch import save, load, Tensor
+from torch import save
 
 from rich.console import Console
 from rich.progress import track
@@ -21,10 +19,8 @@ from .src.loader import read
 
 from .src.vectorizer import TextVectorizer, TextVectorizerOptions
 
-from .src.sets.test import TestDataSet
 from .src.sets.train import TrainDataSet
 
-from .src.types.test import TestData
 from .src.types.train import TrainData
 
 from .src.clean import clean_text
@@ -32,6 +28,9 @@ from .src.model import Model, ModelOptions
 from .src.trainer import fit, predict, split, validate, TrainOptions
 
 from cli.src.tuning import tune_hyperparams
+
+from .src.types.train import AnnotatorGender
+
 
 app = typer.Typer(
     help="This is a CLI tool detect sexism in text.", no_args_is_help=True
@@ -59,6 +58,31 @@ def _compose(
     raise ValueError("Could not load configuration")
 
 
+def _extract_annotator(d: TrainData, sex: AnnotatorGender, age: str) -> TrainData:
+
+    data = TrainData()
+
+    data.tweet = d.tweet
+
+    # Get indexs of female annotators
+    gender_indexes = [
+        i for i, gender in enumerate(d.gender_annotators) if gender == sex
+    ]
+    age_indexes = [i for i, x in enumerate(d.age_annotators) if x == age]
+
+    # Get the intersection of the two lists
+    indexs = list(set(gender_indexes).intersection(age_indexes))
+
+    _f_task1_labels = [d.labels_task1[i] for i in indexs]
+
+    data.labels_task1 = _f_task1_labels
+
+    data.age_annotators = [d.age_annotators[i] for i in indexs]
+    data.gender_annotators = [d.gender_annotators[i] for i in indexs]
+
+    return data
+
+
 @app.command()
 def train(
     # Files
@@ -74,9 +98,6 @@ def train(
     # Load vectorizer
     vectorizer = TextVectorizer(options=config.vectorizer, load=True)
 
-    # Load the model
-    model = Model.get(vocab_size=len(vectorizer.vocabulary), options=config.model)
-
     # Load the train set
     trains = read(train_file)
 
@@ -90,143 +111,168 @@ def train(
     for data in track(trainset.datas, description="Cleaning the train set"):
         data.tweet = clean_text(data.tweet)
 
-    trainsubset, valsubset = split(options=config.train, dataset=trainset)
-
-    # Setup interactive plotting
-    plt.ion()
-
-    ax1: Axes
-    ax2: Axes
-    _, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
-
-    losses: list[float] = []
-    epochs: list[int] = []
-    accuracies: list[float] = []
-
-    # Train the model
-    fitting = fit(model, subset=trainsubset, options=config.train)
-    for epoch, metric, loss in fitting:
-        # Update data
-        epochs.append(epoch)
-        losses.append(float(loss.item()))
-        accuracies.append(float(metric.accuracy.item()))
-
-        # Clear and redraw plots
-        ax1.clear()
-        ax2.clear()
-
-        # Plot loss
-        ax1.plot(epochs, losses, "b-")
-        ax1.set_xlabel("Epoch")
-        ax1.set_ylabel("Loss")
-        ax1.set_title("Training Loss")
-        ax1.grid(True)
-
-        # Plot accuracy
-        ax2.plot(epochs, accuracies, "r-")
-        ax2.set_xlabel("Epoch")
-        ax2.set_ylabel("Accuracy")
-        ax2.set_title("Training Accuracy")
-        ax2.grid(True)
-
-        plt.tight_layout()
-        plt.draw()
-        plt.pause(0.1)
-
-        console.log(f"Epoch {epoch}: {metric}")
-
-    # Validation phase
-    val_metrics = []
-    validating = validate(model, subset=valsubset, options=config.train)
-    for metric in validating:
-        val_metrics.append(metric)
-        console.log(f"Validation metrics: {metric}")
-
-    # Final validation results
-    ax2.axhline(
-        y=val_metrics[-1]["accuracy"],
-        color="g",
-        linestyle="--",
-        label="Validation Accuracy",
+    # Load the model
+    console.log("Handling F 18-22")
+    f_young_model = Model.get(
+        vocab_size=len(vectorizer.vocabulary), options=config.model
     )
-    ax2.legend()
-
-    plt.ioff()
-    plt.show()
-
-    # Save the model
-    with open(output_file, "wb") as file:
-        save(model.state_dict(), file)
-
-    console.log(f"Model saved to {output_file}")
-
-
-@app.command()
-def test(
-    # Files
-    test_file: Annotated[typer.FileText, typer.Option(encoding="UTF-8")],
-    model_file: Annotated[str, typer.Option(help="Path to the model file")],
-    # Output file path
-    output_path: Annotated[str, typer.Option(help="File to save the predictions to")],
-    # Hydra options
-    overrides: Optional[List[str]] = typer.Argument(None),
-):
-    # Load the configuration
-    config: Config = _compose("./", "model.yaml", overrides)
-
-    # Create a vectorizer
-    vectorizer = TextVectorizer(options=config.vectorizer, load=True)
-    console.log(f"Vectorizer loaded with {len(vectorizer.vocabulary)} words")
+    f_young_trainset = TrainDataSet(vectorizer=vectorizer)
+    for data in track(trainset.datas, description="Filtering the train set"):
+        f_young_data = _extract_annotator(data, "F", "18-22")
+        f_young_trainset.datas = append(f_young_trainset.datas, f_young_data)
+    # Train and validate the model
+    trainsubset, valsubset = split(options=config.train, dataset=f_young_trainset)
+    fitting = fit(f_young_model, subset=trainsubset, options=config.train)
+    for epoch, metric, loss in fitting:
+        console.log(f"Epoch {epoch}: {metric} - Loss: {loss}")
+    validating = validate(f_young_model, subset=valsubset, options=config.train)
+    for metric in validating:
+        console.log(f"Validation: {metric}")
 
     # Load the model
-    model = Model.get(vocab_size=len(vectorizer.vocabulary), options=config.model)
-    # Load the model weights
-    model.load_state_dict(state_dict=load(model_file, weights_only=True))
+    console.log("Handling F 23-45")
+    f_mid_model = Model.get(vocab_size=len(vectorizer.vocabulary), options=config.model)
+    f_mid_trainset = TrainDataSet(vectorizer=vectorizer)
+    for data in track(trainset.datas, description="Filtering the train set"):
+        f_mid_data = _extract_annotator(data, "F", "23-45")
+        f_mid_trainset.datas = append(f_mid_trainset.datas, f_mid_data)
+    # Train and validate the model
+    trainsubset, valsubset = split(options=config.train, dataset=f_mid_trainset)
+    fitting = fit(f_mid_model, subset=trainsubset, options=config.train)
+    for epoch, metric, loss in fitting:
+        console.log(f"Epoch {epoch}: {metric} - Loss: {loss}")
+    validating = validate(f_mid_model, subset=valsubset, options=config.train)
+    for metric in validating:
+        console.log(f"Validation: {metric}")
 
-    # Set the model to evaluation mode
-    model.eval()
+    # Load the model
+    console.log("Handling F 46+")
+    f_old_model = Model.get(vocab_size=len(vectorizer.vocabulary), options=config.model)
+    f_old_trainset = TrainDataSet(vectorizer=vectorizer)
+    for data in track(trainset.datas, description="Filtering the train set"):
+        f_old_data = _extract_annotator(data, "F", "46+")
+        f_old_trainset.datas = append(f_old_trainset.datas, f_old_data)
+    # Train and validate the model
+    trainsubset, valsubset = split(options=config.train, dataset=f_old_trainset)
+    fitting = fit(f_old_model, subset=trainsubset, options=config.train)
+    for epoch, metric, loss in fitting:
+        console.log(f"Epoch {epoch}: {metric} - Loss: {loss}")
+    validating = validate(f_old_model, subset=valsubset, options=config.train)
+    for metric in validating:
+        console.log(f"Validation: {metric}")
 
-    # Load the datasets
-    tests = read(test_file)
+    # Load the model
+    console.log("Handling M 18-22")
+    m_young_model = Model.get(
+        vocab_size=len(vectorizer.vocabulary), options=config.model
+    )
+    m_young_trainset = TrainDataSet(vectorizer=vectorizer)
+    for data in track(trainset.datas, description="Filtering the train set"):
+        m_young_data = _extract_annotator(data, "M", "18-22")
+        m_young_trainset.datas = append(m_young_trainset.datas, m_young_data)
+    # Train and validate the model
+    trainsubset, valsubset = split(options=config.train, dataset=m_young_model)
+    fitting = fit(m_young_model, subset=trainsubset, options=config.train)
+    for epoch, metric, loss in fitting:
+        console.log(f"Epoch {epoch}: {metric} - Loss: {loss}")
+    validating = validate(m_young_model, subset=valsubset, options=config.train)
+    for metric in validating:
+        console.log(f"Validation: {metric}")
 
-    # Create the test set
-    testset = TestDataSet(vectorizer=vectorizer)
-    for test in tests:
-        testset.datas = append(testset.datas, TestData(**test))
+    # Load the model
+    console.log("Handling M 23-45")
+    m_mid_model = Model.get(vocab_size=len(vectorizer.vocabulary), options=config.model)
+    m_mid_trainset = TrainDataSet(vectorizer=vectorizer)
+    for data in track(trainset.datas, description="Filtering the train set"):
+        m_mid_data = _extract_annotator(data, "M", "23-45")
+        m_mid_trainset.datas = append(m_mid_trainset.datas, m_mid_data)
+    # Train and validate the model
+    trainsubset, valsubset = split(options=config.train, dataset=m_mid_trainset)
+    fitting = fit(m_mid_model, subset=trainsubset, options=config.train)
+    for epoch, metric, loss in fitting:
+        console.log(f"Epoch {epoch}: {metric} - Loss: {loss}")
+    validating = validate(m_mid_model, subset=valsubset, options=config.train)
+    for metric in validating:
+        console.log(f"Validation: {metric}")
 
-    # Create a cleaned test set only for predictions
-    cleaned_testset = TestDataSet(vectorizer=vectorizer)
-    cleaned_testset.datas = testset.datas.copy()
-    for test in track(cleaned_testset.datas, description="Cleaning the test set"):
-        test.tweet = clean_text(test.tweet)
+    # Load the model
+    console.log("Handling M 46+")
+    m_old_model = Model.get(vocab_size=len(vectorizer.vocabulary), options=config.model)
+    m_old_trainset = TrainDataSet(vectorizer=vectorizer)
+    for data in track(trainset.datas, description="Filtering the train set"):
+        m_old_data = _extract_annotator(data, "M", "46+")
+        m_old_trainset.datas = append(m_old_trainset.datas, m_old_data)
+    trainsubset, valsubset = split(options=config.train, dataset=trainset)
+    # Train and validate the model
+    fitting = fit(m_old_model, subset=trainsubset, options=config.train)
+    for epoch, metric, loss in fitting:
+        console.log(f"Epoch {epoch}: {metric} - Loss: {loss}")
+    validating = validate(m_old_model, subset=valsubset, options=config.train)
+    for metric in validating:
+        console.log(f"Validation: {metric}")
 
-    # Predict on the test set
-    predictions: list[Tensor] = []
-    for tweet in track(
-        cleaned_testset.datas,
-        description="Predicting with model",
-        total=len(cleaned_testset.datas),
-    ):
-        predictions.append(predict(model, vectorizer=vectorizer, text=tweet.tweet))
+    # Save the model
+    with open(output_file + "_f_young", "wb") as file:
+        save(f_young_model.state_dict(), file)
 
-    # Save the predictions
-    with open(output_path, "w") as file:
+    with open(output_file + "_f_mid", "wb") as file:
+        save(f_mid_model.state_dict(), file)
+
+    with open(output_file + "_f_old", "wb") as file:
+        save(f_old_model.state_dict(), file)
+
+    with open(output_file + "_m_young", "wb") as file:
+        save(m_young_model.state_dict(), file)
+
+    with open(output_file + "_m_mid", "wb") as file:
+        save(m_mid_model.state_dict(), file)
+
+    with open(output_file + "_m_old", "wb") as file:
+        save(m_old_model.state_dict(), file)
+
+    f_young_model.eval()
+
+    class Prediction:
+        ID: str
+        pred: int
+
+    predictions: list[Prediction] = []
+    for data in track(trainset.datas, description="Predicting with model"):
+
+        f_young_prediction = predict(
+            f_young_model, vectorizer=vectorizer, text=data.tweet
+        )
+        f_mid_prediction = predict(f_mid_model, vectorizer=vectorizer, text=data.tweet)
+        f_old_prediction = predict(f_old_model, vectorizer=vectorizer, text=data.tweet)
+
+        m_young_prediction = predict(
+            m_young_model, vectorizer=vectorizer, text=data.tweet
+        )
+        m_mid_prediction = predict(m_mid_model, vectorizer=vectorizer, text=data.tweet)
+        m_old_prediction = predict(m_old_model, vectorizer=vectorizer, text=data.tweet)
+
+        votes = [
+            f_young_prediction,
+            f_mid_prediction,
+            f_old_prediction,
+            m_young_prediction,
+            m_mid_prediction,
+            m_old_prediction,
+        ]
+
+        prediction = Prediction()
+        prediction.ID = data.ID
+        prediction.pred = sum(votes) / len(votes)
+
+        predictions.append(prediction)
+
+    with open(output_file + "_predictions", "w") as file:
         writer = csv.writer(file)
 
-        writer.writerow(["tweet", "prediction"])
+        writer.writerow(["ID", "pred"])
 
-        for idx, prediction in track(
-            predictions,
-            description="Saving predictions to file",
-            total=len(predictions),
-        ):
-            data = testset.datas[idx]
-            writer.writerow(
-                [
-                    data.tweet,
-                    prediction.item(),
-                ]
-            )
+        for prediction in predictions:
+            writer.writerow([prediction.ID, prediction.pred])
 
 
 @app.command()
@@ -254,22 +300,6 @@ def vectorize(
     # Clean the train set
     for data in track(trainset.datas, description="Cleaning the train set"):
         data.tweet = clean_text(data.tweet)
-
-    # Augment the train set
-    # augmented_trainset = TrainDataSet(vectorizer=vectorizer)
-    # for data in track(
-    #     trainset.datas,
-    #     description="Augmenting the train set",
-    #     total=len(trainset.datas),
-    # ):
-    #     augmented_data = augment_with_synonyms(
-    #         tokens=data.tweet.split(), num_replacements=2, max_augmented=5
-    #     )
-    #     for augmented in augmented_data:
-    #         augmented_trainset.datas = append(
-    #             augmented_trainset.datas, TrainData(tweet=" ".join(augmented))
-    #         )
-    #         print(f"Augmented: {' '.join(augmented)}")
 
     # Fit the vectorizer
     vectorizer.fit([tweet.tweet for tweet in trainset.datas], save=True)

@@ -36,53 +36,11 @@ class TrainDataSet(Dataset):
         return tweet, sexist
 
     def check_is_sexist(self, data: TrainData) -> bool:
+        sexism_votes = [
+            1 if label.upper() == "YES" else 0 for label in data.labels_task1
+        ]
 
-        # Initialize weights for different types of sexism
-        sexism_weights = {
-            "-": 0.5,
-            "DIRECT": 1.0,
-            "JUDGEMENTAL": 0.8,
-            "REPORTED": 0.7,
-        }
+        if not sexism_votes:  # Handle empty labels
+            return False
 
-        # # Initialize demographic weights (optional tuning based on analysis)
-        # demographic_weights = {
-        #     "gender": {"F": 1.2, "M": 0.8},  # Slight bias towards female annotators
-        # }
-
-        total_score = 0
-        valid_votes = 0
-
-        for idx in range(len(data.annotators)):
-
-            task1_label = data.labels_task1[idx]
-            task2_label = data.labels_task2[idx]
-
-            # gender = data.gender_annotators[idx]
-
-            # Skip invalid or incomplete annotations
-            if task1_label not in ["YES", "NO"] or task2_label not in sexism_weights:
-                continue
-
-            vote_score = 0
-            valid_votes += 1
-
-            # Calculate sexism score
-            if task1_label == "YES":
-                vote_score = sexism_weights[task2_label]
-            elif task1_label == "NO":
-                vote_score = -0.5  # Slight penalty for NO votes
-
-            # Apply demographic adjustments (if available)
-            # if gender in demographic_weights["gender"]:
-            #     vote_score *= demographic_weights["gender"][gender]
-
-            total_score += vote_score
-
-        # Normalize score (-1 to 1 range)
-        if valid_votes == 0:
-            raise ValueError("No valid votes found for this data point.")
-
-        normalized_score = total_score / valid_votes
-
-        return normalized_score >= 0.0
+        return (sum(sexism_votes) / len(data.labels_task1)) >= 0.5

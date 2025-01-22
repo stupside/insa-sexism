@@ -55,15 +55,14 @@ class Model(nn.Module):
         self.device = device
         self.options = options
 
-        # Add embedding layer
+        # Add L2 normalization to embedding
         self.embedding = nn.Embedding(
-            num_embeddings=vocab_size, embedding_dim=options.embedding_dim
+            max_norm=1.0,
+            num_embeddings=vocab_size,
+            embedding_dim=options.embedding_dim,
         )
 
         self.seq = nn.Sequential()
-
-        # Modify first layer to use embedding dimension
-        # self.seq.add_module("norm1d", nn.BatchNorm1d(options.embedding_dim))
 
         prev_dim = options.embedding_dim
 
@@ -71,12 +70,14 @@ class Model(nn.Module):
         for i in range(len(options.layer_dims)):
             current_dim = options.layer_dims[i]
 
-            # Add dense layer with ReLU activation
+            # Add dense layer with GELU activation
             self.seq.add_module(f"layer{i}_linear", nn.Linear(prev_dim, current_dim))
-            self.seq.add_module(f"layer{i}_relu", nn.ReLU())
-            # Add batch normalization
-            self.seq.add_module(f"layer{i}_norm1d", nn.BatchNorm1d(current_dim))
-            # Add dropout
+            # Add GELU activation function after dense layer
+            # Smoother version of ReLU (better forgiving of negative values)
+            self.seq.add_module(f"layer{i}_gelu", nn.GELU())
+            # Add layer normalization instead of batch norm
+            self.seq.add_module(f"layer{i}_norm", nn.LayerNorm(current_dim))
+            # Add dropout to prevent overfitting by disabling some neurons
             self.seq.add_module(f"layer{i}_dropout", nn.Dropout(options.dropout_rate))
 
             prev_dim = current_dim
@@ -88,16 +89,16 @@ class Model(nn.Module):
         # Run embedding layer
         x = self.embedding.forward(x)
 
+        if x.dim() == 2:
+            x = x.unsqueeze(0)
+
         # Average embeddings
         embedding = torch.mean(x, dim=1)
 
         logits = self.seq.forward(embedding)
 
-        # Add sigmoid activation for binary classification
-        if self.options.output_dim == 1:
-            return torch.sigmoid(logits)
-        else:
-            return torch.softmax(logits, dim=1)
+        # For binary classification, always use sigmoid
+        return torch.sigmoid(logits)
 
     @staticmethod
     def get_new_metric():

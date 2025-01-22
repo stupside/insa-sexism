@@ -1,18 +1,22 @@
 model:
   output_dim: 1
-  dropout_rate: 0.4
-  embedding_dim: 512
+  dropout_rate: 0.3 # This is to avoid overfitting by randomly setting a fraction of input units to 0 at each update during training time.
+  embedding_dim: 256 # This is the size of the word embeddings. It's the number of dimensions in which the words will be represented.
   layer_dims: 
+    - 512  # Increased layer size for better feature extraction
     - 256
-    - 128
+    - 128  # Added an extra layer to enhance learning capacity
 train:
-    seed: 150
-    num_epochs: 16
-    batch_size: 4
-    learn_rate: 0.0001
+    seed: 42
+    num_epochs: 50 # This is the number of epochs for which the model will be trained
+    batch_size: 32 # This is the batch size for the optimizer
+    learn_rate: 0.0005 # This is the learning rate for the optimizer
     num_workers: 0
-    weight_decay: 0.00001
-    train_val_split: 0.85
+    weight_decay: 0.001 # This is the L2 regularization parameter. It's to avoid giving too much importance to a single feature.
+    train_val_split: 0.8 # This is the proportion of the data that will be used for training.
+    lr_mode: min # This is the mode for the learning rate scheduler (min, max).
+    lr_factor: 0.1 # This is the factor by which the learning rate will be reduced
+    lr_patience: 5 # This is the number of epochs with no improvement after which learning rate will be reduced
 vectorizer:
-  max_length: 258
+  max_length: 128
   dictionnary_path: ./out/model.dict
