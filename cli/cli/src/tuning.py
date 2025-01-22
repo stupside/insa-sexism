@@ -46,32 +46,37 @@ def objective(
     vocab_size = len(vectorizer.vocabulary)
 
     try:
+        model_opts = ModelOptions(
+            input_dim=vocab_size,
+            output_dim=1,
+            layer_dims=layer_dims,
+            dropout_rate=model_params["dropout_rate"],
+            embedding_dim=embedding_dim,
+            vocab_size=vocab_size,
+        )
+
         model = Model.get(
             vocab_size=vocab_size,
-            options=ModelOptions(
-                input_dim=vocab_size,
-                output_dim=1,
-                layer_dims=layer_dims,
-                dropout_rate=model_params["dropout_rate"],
-                embedding_dim=embedding_dim,
-                vocab_size=vocab_size,
-            ),
+            options=model_opts,
         )
 
         train_opts = TrainOptions(
             seed=42,
-            num_epochs=10,  # Reduced number of epochs
+            num_epochs=16,
             batch_size=model_params["batch_size"],
             learn_rate=model_params["learning_rate"],
             weight_decay=model_params["weight_decay"],
             train_val_split=0.85,
-            num_workers=4,
+            num_workers=0,
         )
+
+        print(f"Trial {trial.number} - Model: {model_opts}, Train: {train_opts}")
 
         # Split dataset into train and validation
         trainsubset, valsubset = split(options=train_opts, dataset=trainset)
 
         # Training phase
+        print("Training model")
         best_train_f1 = 0.0
         for epoch, train_metrics in fit(model, subset=trainsubset, options=train_opts):
             current_f1 = train_metrics.f1.item()
@@ -83,6 +88,7 @@ def objective(
                 raise optuna.TrialPruned()
 
         # Validation phase
+        print("Validating model")
         best_val_f1 = 0.0
         for val_metrics in validate(model, subset=valsubset, options=train_opts):
             best_val_f1 = max(best_val_f1, val_metrics.f1.item())
@@ -107,7 +113,7 @@ def tune_hyperparams(
     study.optimize(
         lambda trial: objective(trial, vectorizer, trainset),
         n_trials=trials,
-        timeout=3600,
+        timeout=60000,
         catch=(Exception,),
         callbacks=[
             lambda _, trial: logging.info(

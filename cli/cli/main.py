@@ -252,6 +252,6 @@ def tune(
     for data in track(trainset.datas, description="Cleaning the train set"):
         data.tweet = clean_text(data.tweet)
 
-    result = tune_hyperparams(trials=100, vectorizer=vectorizer, trainset=trainset)
+    result = tune_hyperparams(trials=15, vectorizer=vectorizer, trainset=trainset)
 
     console.log(f"Best hyperparameters: {result}")
