@@ -1,4 +1,4 @@
-.PHONY: install clean train test vectorize check
+.PHONY: install clean train test vectorize check train-embedding
 
 clean:
 	rm -rf ./out/*
@@ -7,10 +7,15 @@ vectorize:
 	sxm vectorize \
 		--train-file ../cli-data/train.csv
 
-train:
-	sxm train \
+train-model:
+	sxm train-model \
 		--train-file ../cli-data/train.csv \
 		--output-file ./out/model.pt
+
+train-embedding:
+	sxm train-embedding \
+		--train-file ../cli-data/train.csv
+
 
 tune:
 	sxm tune \
@@ -28,6 +33,7 @@ check:
 
 all:
 	make vectorize
+	make train-embedding
 	make train
 	make test
 

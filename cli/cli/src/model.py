@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
-import logging
 import os
-from multiprocessing import current_process
 
 from .metric import Metric
 
@@ -18,16 +16,17 @@ else:
 
 print(f"Using device: {device}")
 
-# Add logging configuration
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
+class EmbeddingOptions:
+    num_epochs: int
+    batch_size: int
+    learn_rate: float
+    weight_decay: float
+    embedding_dim: int
+    checkpoint_path: str
 
-# Add worker identification
-def log_worker_info():
-    worker = current_process().name
-    pid = os.getpid()
-    logger.info(f"Worker {worker} (PID: {pid}) initialized")
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
 
 
 class ModelOptions:
@@ -36,77 +35,82 @@ class ModelOptions:
     dropout_rate: float
     embedding_dim: int
 
-    def __init__(
-        self,
-        **kwargs,
-    ):
+    def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
 
-class Model(nn.Module):
+class EmbeddingModel(nn.Module):
+    @staticmethod
+    def load(options: EmbeddingOptions, vocab_size: int) -> "EmbeddingModel":
+        model = EmbeddingModel(vocab_size, options.embedding_dim)
+        if os.path.exists(options.checkpoint_path):
+            model.load_state_dict(
+                torch.load(options.checkpoint_path, weights_only=True)
+            )
+        return model
+
+    def __init__(self, vocab_size: int, embedding_dim: int):
+        super().__init__()
+        self.device = device
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.to(device)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.embedding(x)
+
+    def freeze(self):
+        """Freeze embedding parameters"""
+        for param in self.parameters():
+            param.requires_grad = False
+
+    def unfreeze(self):
+        """Unfreeze embedding parameters"""
+        for param in self.parameters():
+            param.requires_grad = True
+
+
+class ClassifierModel(nn.Module):
 
     device: torch.device
     options: ModelOptions
 
-    def __init__(self, device: torch.device, vocab_size: int, options: ModelOptions):
-        super(Model, self).__init__()
-        log_worker_info()  # Log when model is created in worker
+    def __init__(self, embedding_model: EmbeddingModel, options: ModelOptions):
+        super(ClassifierModel, self).__init__()
 
         self.device = device
+        self.embedding_model = embedding_model
         self.options = options
 
-        # Add L2 normalization to embedding
-        self.embedding = nn.Embedding(
-            max_norm=1.0,
-            num_embeddings=vocab_size,
-            embedding_dim=options.embedding_dim,
-        )
-
-        self.seq = nn.Sequential()
-
+        layers = []
         prev_dim = options.embedding_dim
 
-        # Add dynamic number of layers
-        for i in range(len(options.layer_dims)):
-            current_dim = options.layer_dims[i]
+        for dim in options.layer_dims:
+            layers.extend(
+                [nn.Linear(prev_dim, dim), nn.ReLU(), nn.Dropout(options.dropout_rate)]
+            )
+            prev_dim = dim
 
-            # Add dense layer with GELU activation
-            self.seq.add_module(f"layer{i}_linear", nn.Linear(prev_dim, current_dim))
-            # Add GELU activation function after dense layer
-            # Smoother version of ReLU (better forgiving of negative values)
-            self.seq.add_module(f"layer{i}_gelu", nn.GELU())
-            # Add layer normalization instead of batch norm
-            self.seq.add_module(f"layer{i}_norm", nn.LayerNorm(current_dim))
-            # Add dropout to prevent overfitting by disabling some neurons
-            self.seq.add_module(f"layer{i}_dropout", nn.Dropout(options.dropout_rate))
+        layers.append(nn.Linear(prev_dim, options.output_dim))
 
-            prev_dim = current_dim
+        self.layers = nn.Sequential(*layers)
 
-        # Add output layer
-        self.seq.add_module("linear", nn.Linear(prev_dim, options.output_dim))
+        self.to(device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Run embedding layer
-        x = self.embedding.forward(x)
-
-        if x.dim() == 2:
-            x = x.unsqueeze(0)
-
-        # Average embeddings
-        embedding = torch.mean(x, dim=1)
-
-        logits = self.seq.forward(embedding)
-
-        # For binary classification, always use sigmoid
-        return torch.sigmoid(logits)
+        x = self.embedding_model(x)
+        x = torch.mean(x, dim=1)
+        return self.layers(x)
 
     @staticmethod
     def get_new_metric():
         return Metric(device=device)
 
     @staticmethod
-    def get(vocab_size: int, options: ModelOptions) -> "Model":
-
-        classifier = Model(device=device, vocab_size=vocab_size, options=options)
-
-        return classifier.to(device)
+    def get(
+        vocab_size: int,
+        options: ModelOptions,
+        embedding_model: EmbeddingModel,
+    ):
+        if embedding_model is None:
+            embedding_model = EmbeddingModel(vocab_size, options.embedding_dim)
+        return ClassifierModel(embedding_model, options)

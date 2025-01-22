@@ -120,7 +120,7 @@ def correct_word(word: str) -> str:
     ]
 
     # Only compute edit distance for the first 50 candidates
-    candidates = candidates[:50]
+    candidates = candidates[:25]
 
     try:
         distances = [(edit_distance(word, w), w) for w in candidates]
